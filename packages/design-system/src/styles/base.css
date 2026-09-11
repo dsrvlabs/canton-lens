@@ -1,0 +1,91 @@
+/* ── Ground ───────────────────────────────────────────────────────────
+   The only layer laid on the document itself. Nowhere else does any file paint globally through element
+   selectors (elements are picked only inside `.clds-`) — so the consumer's own markup is left free. */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+/* The scrollbar's slot is always kept clear — so a centred body does not shift sideways by the width of
+   the scrollbar when moving between a tall screen and a short one. */
+html {
+  scrollbar-gutter: stable;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--clds-color-canvas);
+  color: var(--clds-color-ink);
+  font: var(--clds-text-default) / var(--clds-leading) var(--clds-font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: var(--clds-color-accent-soft);
+  color: var(--clds-color-ink);
+}
+
+/* For a user who asks for less motion, transitions · animations are effectively off. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
+/* Skip to content — visible only to someone who came in by keyboard (the first Tab stop). */
+.clds-skip {
+  position: absolute;
+  top: -100px;
+  left: var(--clds-space-4);
+  z-index: 100;
+  padding: var(--clds-space-3) var(--clds-space-5);
+  background: var(--clds-color-surface);
+  color: var(--clds-color-accent);
+  border: 1px solid var(--clds-color-line);
+  border-radius: var(--clds-radius-lg);
+  box-shadow: var(--clds-shadow-card);
+  font-weight: var(--clds-weight-semibold);
+}
+.clds-skip:focus {
+  top: var(--clds-space-4);
+}
+
+a {
+  color: var(--clds-color-link);
+  text-decoration: none;
+}
+a:hover {
+  color: var(--clds-color-link-hover);
+  text-decoration: underline;
+}
+
+button {
+  cursor: pointer;
+}
+button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* The focus ring is defined in one place only — redrawn per component, the rings drift apart.
+   It picks no element: rows and cards taking focus via tabIndex (RowLink · ListCard) use the same ring. */
+:focus-visible {
+  outline: 2px solid var(--clds-color-accent);
+  outline-offset: 2px;
+  border-radius: var(--clds-radius-sm);
+}
+
+code {
+  font-family: var(--clds-font-mono);
+  font-size: var(--clds-text-small);
+  font-variant-numeric: tabular-nums;
+}

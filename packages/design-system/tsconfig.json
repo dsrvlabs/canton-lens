@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.base.json",
+  // The JSX layer that runs in the browser — flips base's node assumption exactly as frontend does.
+  // types is left empty: this package assumes neither vite nor node (the consumer's bundler decides).
+  "compilerOptions": {
+    "lib": ["es2023", "dom", "dom.iterable"],
+    "types": [],
+    "jsx": "react-jsx",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "rewriteRelativeImportExtensions": false
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx"]
+}

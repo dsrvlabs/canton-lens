@@ -1,0 +1,416 @@
+/* ── Controls ─────────────────────────────────────────────────────────
+   Button · input · toolbar · pager · search · disclosure. This product has no write path, so every button
+   here is a button that "changes where you are looking" (apply · cancel · more · refresh). */
+
+.clds-button {
+  font-family: inherit;
+  font-weight: var(--clds-weight-semibold);
+  border: 1px solid transparent;
+  border-radius: var(--clds-radius-lg);
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Grain. Only primary is filled — one filled button on a screen is enough. */
+.clds-button--primary {
+  background: var(--clds-color-accent);
+  color: var(--clds-color-accent-ink);
+  border-color: var(--clds-color-accent);
+}
+.clds-button--secondary {
+  background: var(--clds-color-surface);
+  color: var(--clds-color-accent);
+  border-color: var(--clds-color-rule);
+}
+.clds-button--outline {
+  background: transparent;
+  color: var(--clds-color-accent);
+  border-color: var(--clds-color-rule);
+  font-weight: var(--clds-weight-medium);
+}
+/* A button that is text alone — it takes no size of its own. */
+.clds-button--plain {
+  background: transparent;
+  color: var(--clds-color-accent);
+  border-color: transparent;
+  font-size: var(--clds-text-compact);
+  padding: 0 var(--clds-space-2);
+}
+
+/* The answer that a hand has touched — hover is one step darker or a pale ground, active is a 1px press. */
+.clds-button {
+  transition:
+    background-color 0.12s ease,
+    border-color 0.12s ease,
+    transform 0.06s ease;
+}
+.clds-button--primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--clds-color-accent) 86%, black);
+  border-color: color-mix(in srgb, var(--clds-color-accent) 86%, black);
+}
+.clds-button--secondary:hover:not(:disabled),
+.clds-button--outline:hover:not(:disabled) {
+  background: var(--clds-color-subtle);
+}
+.clds-button--plain:hover:not(:disabled) {
+  text-decoration: underline;
+}
+.clds-button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+.clds-button:disabled {
+  cursor: default;
+}
+
+.clds-button--xs {
+  font-size: var(--clds-text-small);
+  padding: var(--clds-space-2) 11px;
+}
+.clds-button--sm {
+  font-size: var(--clds-text-small);
+  padding: 5px 11px;
+}
+.clds-button--md {
+  font-size: var(--clds-text-note);
+  padding: var(--clds-space-3) var(--clds-space-6);
+}
+.clds-button--lg {
+  font-size: var(--clds-text-compact);
+  padding: 5px var(--clds-space-7);
+}
+/* The large button inside the band — it stretches to the same height as the search row beside it. */
+.clds-button--xl {
+  font-size: var(--clds-text-default);
+  padding: 0 20px;
+  border-radius: var(--clds-radius-xl);
+}
+
+.clds-input {
+  font: inherit;
+  border: 1px solid var(--clds-color-rule);
+  border-radius: var(--clds-radius-lg);
+  background: var(--clds-color-canvas);
+  color: var(--clds-color-ink);
+}
+/* Blocking the autofill ground — the same method as .clds-searchbar__input above, in this field's own
+   surface colour (canvas). */
+.clds-input:-webkit-autofill,
+.clds-input:-webkit-autofill:hover,
+.clds-input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 1000px var(--clds-color-canvas) inset;
+  box-shadow: 0 0 0 1000px var(--clds-color-canvas) inset;
+  -webkit-text-fill-color: var(--clds-color-ink);
+  caret-color: var(--clds-color-ink);
+  transition: background-color 9999s ease-out 0s;
+}
+/* The focus ring sits on the input border — a gap between field text and ring reads as two layers. */
+.clds-input:focus-visible {
+  outline: 2px solid var(--clds-color-accent);
+  outline-offset: 0;
+  border-radius: var(--clds-radius-lg);
+}
+/* An input with a list attached (list=datalist) — the default ▼ that Chrome draws on the right is swapped
+   for the same arrow. Why the marker itself is kept: this is a place where pressing opens the list. Only
+   the picture is changed; the colour is ink-dim, the same as the disclosure marker. */
+.clds-input[list]::-webkit-calendar-picker-indicator {
+  width: 12px;
+  height: 12px;
+  padding: 0;
+  margin-left: var(--clds-space-3);
+  opacity: 1;
+  cursor: pointer;
+  background: var(--clds-color-ink-dim);
+  -webkit-mask: var(--clds-icon-caret) center / 12px 12px no-repeat;
+  mask: var(--clds-icon-caret) center / 12px 12px no-repeat;
+}
+/* An input with a suggestion list (SuggestInput) — the list is left-aligned directly under the input, grows
+   to 500px tall and scrolls beyond that, as specified. Its width is at least the input's width. The marker
+   on the right is the same arrow as datalist's. */
+.clds-suggest {
+  position: relative;
+  display: inline-flex;
+}
+.clds-suggest > .clds-input {
+  padding-right: calc(12px + var(--clds-space-5) * 2);
+}
+.clds-suggest::after {
+  content: "";
+  position: absolute;
+  right: var(--clds-space-5);
+  top: 50%;
+  width: 12px;
+  height: 12px;
+  margin-top: -6px;
+  background: var(--clds-color-ink-dim);
+  -webkit-mask: var(--clds-icon-caret) center / 12px 12px no-repeat;
+  mask: var(--clds-icon-caret) center / 12px 12px no-repeat;
+  pointer-events: none;
+}
+.clds-suggest__menu {
+  /* The width follows the content — so a long name (Module.Path:Entity) is not cut off. It never goes
+     narrower than the input, and it stops at 560px. */
+  width: max-content;
+  min-width: 100%;
+  max-width: min(560px, 90vw);
+  max-height: 500px;
+  overflow-y: auto;
+  margin: 0;
+  padding: var(--clds-space-2);
+  list-style: none;
+}
+.clds-suggest__menu[hidden] {
+  display: none;
+}
+.clds-suggest__opt {
+  padding: var(--clds-space-3) var(--clds-space-5);
+  font-size: var(--clds-text-compact);
+  border-radius: var(--clds-radius-md);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.clds-suggest__opt[aria-selected="true"] {
+  background: var(--clds-color-subtle);
+}
+.clds-input--sm {
+  font-size: var(--clds-text-note);
+  padding: 5px 9px;
+  min-width: 180px;
+}
+.clds-input--md {
+  font-size: var(--clds-text-compact);
+  padding: 7px var(--clds-space-5);
+}
+.clds-input--block {
+  width: 100%;
+}
+.clds-input--mono {
+  font-family: var(--clds-font-mono);
+}
+.clds-input--wide {
+  min-width: 260px;
+}
+/* A field that takes a single number. The 180px of sm eats room in the toolbar and pushes the button
+   beside it onto the next line. */
+.clds-input--narrow {
+  min-width: 120px;
+}
+
+/* Toolbar — between a section's head and its body. Nothing is judged here: it takes input and hands it
+   on to the URL. */
+.clds-toolbar {
+  display: flex;
+  gap: var(--clds-space-4);
+  align-items: center;
+  flex-wrap: wrap;
+  padding: var(--clds-space-5) var(--clds-space-8);
+  border-bottom: 1px solid var(--clds-color-rule);
+  font-size: var(--clds-text-note);
+  color: var(--clds-color-ink-dim);
+}
+/* The pill that states a condition being on */
+.clds-toolbar__flag {
+  background: var(--clds-color-accent-soft);
+  color: var(--clds-color-accent);
+  border-radius: var(--clds-radius-pill);
+  padding: 1px var(--clds-space-4);
+  font-size: var(--clds-text-caption);
+  font-weight: var(--clds-weight-semibold);
+}
+
+/* Pager — the foot of a section. Two words: "Older / Newer". */
+.clds-pager {
+  display: flex;
+  gap: var(--clds-space-4);
+  align-items: center;
+  padding: 9px var(--clds-space-8);
+  border-top: 1px solid var(--clds-color-rule);
+  font-size: var(--clds-text-small);
+  color: var(--clds-color-ink-faint);
+}
+
+/* Search row — the placeholder text says what goes in, and the magnifier button (SearchButton) runs it. */
+.clds-searchbar {
+  /* It takes the room left over but never passes 900px — stretched to the end on a wide screen the input
+     crosses the window and the eye has to sweep from the left edge to the right. No media query is needed:
+     below 900px flex already holds it smaller than that, so this cap never comes into play. */
+  flex: 1;
+  max-width: 900px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  gap: var(--clds-space-5);
+  /* The fill states "a place to write" — there is no shadow. With a white header, a white surface plus a
+     shadow read as a floating card, and an input is not something raised but something sunken. */
+  background: var(--clds-color-field);
+  /* A pill. The design calls for 50px, but border-radius is clipped at half the box height (28px), so at a
+     height of 56px, 50px and pill (999px) are the same to the pixel — so no new value is made and the
+     token that already exists is used. They part company once the height passes 100px. */
+  border-radius: var(--clds-radius-pill);
+  padding: 0 var(--clds-space-7) 0 var(--clds-searchbar-inset);
+  /* The focus ring's place — a transparent 1px at rest. Only the colour changes, so it spreads softly both
+     coming in and going out. Under a reduced-motion setting base.css turns the transition off. */
+  box-shadow: 0 0 0 1px transparent;
+  transition: box-shadow 0.25s ease;
+}
+/* Focus — a 1px ring of lime at 80% outside the pill. There is no turning animation; instead the colour
+   comes in and goes out over 0.25s (fade in/out).
+   Why box-shadow and not outline: some browsers do not follow the pill radius with outline, and the
+   thickness must not eat into the surface inside. */
+.clds-searchbar:focus-within {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--clds-color-brand) 80%, transparent);
+}
+.clds-searchbar__input {
+  flex: 1;
+  font: inherit;
+  font-size: var(--clds-text-default);
+  padding: var(--clds-space-6) 0;
+  border: 0;
+  background: transparent;
+  color: var(--clds-color-ink);
+  min-width: 0;
+}
+.clds-searchbar__input:focus {
+  outline: none;
+}
+/* Blocks the white (pale yellow) ground the browser's autofill paints. Chrome does not allow the background
+   of :-webkit-autofill to be overwritten, so an inset shadow lays the pill's surface colour on thickly over
+   it and sets the text colour again. Giving background-color a very long transition is the known way to
+   stop the autofill colour before it appears. */
+.clds-searchbar__input:-webkit-autofill,
+.clds-searchbar__input:-webkit-autofill:hover,
+.clds-searchbar__input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 1000px var(--clds-color-field) inset;
+  box-shadow: 0 0 0 1000px var(--clds-color-field) inset;
+  -webkit-text-fill-color: var(--clds-color-ink);
+  caret-color: var(--clds-color-ink);
+  transition: background-color 9999s ease-out 0s;
+}
+.clds-searchbar__input::placeholder {
+  color: var(--clds-color-ink-faint);
+}
+/* Magnifier button — an accent-coloured glyph, a pale circle on touch. 36px inside the 44px search row. */
+/* Running the search — **a filled round button, 40x40, in brand lime.** It uses the lime button guide as
+   it stands: the surface is --clds-color-brand, the icon is the text colour on it, --clds-color-brand-ink,
+   and hover is 88% + black. Lime is this product's CTA colour (the same family as the current location in
+   the sidebar) and this is the only filled button on the screen. Lime is close in lightness to a white field
+   though, so the button's round boundary rides on colour alone — to have the shape read independently of
+   colour, the surface would have to be inverted (black surface + lime icon). */
+.clds-searchbar__button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  margin-right: -6px;
+  border: 0;
+  border-radius: var(--clds-radius-pill);
+  background: var(--clds-color-brand);
+  color: var(--clds-color-brand-ink);
+  flex: 0 0 auto;
+}
+.clds-searchbar__button:hover {
+  background: color-mix(in srgb, var(--clds-color-brand) 88%, black);
+}
+.clds-searchbar__button:active {
+  transform: translateY(1px);
+}
+
+/* A floating round button — bottom right of the window (horizontally it lines up with the shell's side
+   gutter). Field surface + outline + shadow. */
+.clds-fab {
+  position: fixed;
+  right: var(--clds-layout-gutter);
+  bottom: var(--clds-space-10);
+  /* Above the stuck header (20) and dropdowns (20), below an open menu's veil (the product's .scrim, 24)
+     — when the menu covers things, this is covered with them. */
+  z-index: 22;
+  width: 48px;
+  height: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--clds-color-line);
+  border-radius: var(--clds-radius-pill);
+  background: var(--clds-color-field);
+  color: var(--clds-color-ink-dim);
+  box-shadow: var(--clds-shadow-card);
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease,
+    transform 0.15s ease;
+}
+.clds-fab:hover {
+  color: var(--clds-color-ink);
+  border-color: var(--clds-color-ink-faint);
+}
+.clds-fab:active {
+  transform: translateY(1px);
+}
+.clds-fab:disabled {
+  cursor: default;
+  color: var(--clds-color-ink-faint);
+}
+/* At work — the glyph turns. Under a reduced-motion setting base.css turns it off. */
+.clds-fab--busy svg {
+  animation: clds-fab-spin 0.9s linear infinite;
+}
+@keyframes clds-fab-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Disclosure — where the original text (Raw JSON) is hidden away. Open it and the value comes out as is. */
+.clds-disclosure > summary {
+  cursor: pointer;
+  color: var(--clds-color-accent);
+  font-size: var(--clds-text-small);
+  /* Instead of the browser's default triangle it uses **the arrow from the design** (down.svg, 12×12).
+     Closed it points right, open it points down. The picture goes in as a mask so CSS decides the colour —
+     the dim text colour (ink-dim), the closest there is to the #555 of the design original. */
+  list-style: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--clds-space-2);
+}
+.clds-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+.clds-disclosure > summary::before {
+  content: "";
+  flex: none;
+  width: 8px;
+  height: 8px;
+  background: var(--clds-color-ink-dim);
+  -webkit-mask: var(--clds-icon-caret) center / 8px 8px no-repeat;
+  mask: var(--clds-icon-caret) center / 8px 8px no-repeat;
+  transform: rotate(-90deg);
+  transition: transform 0.15s ease;
+}
+.clds-disclosure[open] > summary::before {
+  transform: none;
+}
+.clds-disclosure > pre {
+  margin: var(--clds-space-3) 0 0;
+  font-size: var(--clds-text-fine);
+}
+
+/* Action row — where what was chosen is applied. One line is drawn above, and the last link is pushed to
+   the right end. */
+.clds-actions {
+  display: flex;
+  gap: var(--clds-space-4);
+  margin-top: var(--clds-space-4);
+  align-items: center;
+  border-top: 1px solid var(--clds-color-rule);
+  padding-top: var(--clds-space-4);
+}
+.clds-actions a {
+  margin-left: auto;
+  font-size: var(--clds-text-note);
+}

@@ -1,0 +1,71 @@
+# Two containers behind one origin.
+#
+#   cp docker/.env.example docker/.env      # then edit docker/.env
+#   docker compose -f docker/compose.yaml up -d --build
+#
+# Compose reads docker/.env because the project directory is the directory of the compose file.
+# That file holds every value; this one holds none, so it is never edited to configure a
+# deployment. Values marked `${VAR:?...}` stop Compose before anything is built or started.
+#
+# Where a value is read decides how it is changed. A `build.args` value is written into the
+# browser bundle as a literal and is therefore fixed for the life of the image: changing it needs
+# `up -d --build`. An `environment` value is read by the Backend process at startup: changing it
+# needs `up -d`. docs/deployment.md carries the same split.
+#
+# Names listed under `environment` without a value are passed through only when set. An absent
+# SHARED_IDENTITY_* variable is not the same as an empty one — apps/backend/src/auth/config.ts
+# refuses startup in caller-bearer mode if any of them is defined at all, empty included.
+
+name: canton-lens
+
+services:
+  frontend:
+    build:
+      # The repository root. The bundle is built from the pnpm workspace, not from apps/frontend
+      # alone: it reads packages/design-system from source.
+      context: ..
+      dockerfile: docker/frontend.Dockerfile
+      args:
+        - VITE_AUTH_MODE=${VITE_AUTH_MODE:?set VITE_AUTH_MODE to browser-oidc, shared-identity or institution-bff in docker/.env — see docker/.env.example}
+        - VITE_OIDC_ISSUER
+        - VITE_OIDC_CLIENT_ID
+        - VITE_OIDC_REDIRECT_URI
+        - VITE_OIDC_POST_LOGOUT_REDIRECT_URI
+        - VITE_OIDC_SCOPES
+        - VITE_OIDC_AUDIENCE
+    # Loopback by default: this server terminates no TLS and enforces no access control, so
+    # exposing it directly is a decision the operator makes explicitly in docker/.env.
+    ports:
+      - "${EXPLORER_BIND:-127.0.0.1}:${EXPLORER_PORT:-8080}:80"
+    # nginx resolves the `backend` name when it loads its configuration, so that container has to
+    # exist first. This waits for the container, not for a healthy Backend.
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ..
+      dockerfile: docker/backend.Dockerfile
+    environment:
+      - LEDGER_AUTH_MODE=${LEDGER_AUTH_MODE:?set LEDGER_AUTH_MODE to caller-bearer or shared-identity in docker/.env — see docker/.env.example}
+      - LEDGER_BASE=${LEDGER_BASE:?set LEDGER_BASE to the Canton JSON API base URL in docker/.env}
+      # Not 127.0.0.1: inside a container that address reaches only the container itself, and the
+      # frontend container would find nothing listening. The process port is still unpublished, so
+      # it is reachable only from this project's network.
+      - API_HOST=0.0.0.0
+      - API_PORT=7600
+      # Optional. Passed through only when set in docker/.env.
+      - PUBLIC_ENTRY_URL
+      - BASE_PATH
+      - SHARED_IDENTITY_ISSUER
+      - SHARED_IDENTITY_CLIENT_ID
+      - SHARED_IDENTITY_CLIENT_SECRET
+      - SHARED_IDENTITY_SCOPES
+      - SHARED_IDENTITY_AUDIENCE
+      # Development only. A container cannot reach its host through a loopback name, so a local
+      # HTTP participant or IdP has to be named here to be reachable at all. See docker/.env.example.
+      - SHARED_IDENTITY_INSECURE_HTTP_HOSTS
+    # No `ports`. The Backend is reachable from the frontend container and from nowhere else.
+    # An API-only deployment publishes it deliberately and puts its own entry controls in front.
+    restart: unless-stopped

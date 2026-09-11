@@ -1,0 +1,12 @@
+/* @canton-lens/design-system — it all arrives as one stylesheet.
+   The consumer calls it once at its entry point:  import "@canton-lens/design-system/styles.css";
+   For tokens alone, "@canton-lens/design-system/tokens.css". */
+@import "./fonts.css";
+@import "./tokens.css";
+@import "./base.css";
+@import "./layout.css";
+@import "./surface.css";
+@import "./table.css";
+@import "./list.css";
+@import "./control.css";
+@import "./chip.css";

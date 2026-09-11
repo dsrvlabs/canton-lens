@@ -1,0 +1,937 @@
+/* Only the shell specific to Canton Lens lives here.
+   The tokens and primitives (sections · tables · cards · badges · buttons · inputs · nav · menus) belong to
+   @canton-lens/design-system — main.tsx loads that stylesheet first, and this file lays the
+   product's face on top of it.
+
+   **What was kept here**: the design system must not know the domain, so only what has meaning in this
+   product alone stays — the header's wordmark · identity chip · sign-out, the sign-in notice screen, the
+   activity sparkline, and the notation of the typed payload.
+   Not one color, spacing or font size is written directly: they are all --clds-* tokens. */
+
+/* ── Header — one row stuck to the top of the window ────────────────
+   The wordmark · search · identity live on one row. It uses the full window width (the same left and right
+   gutters as the content shell), and its height is fixed so it does not shift as you move between screens.
+   position: relative is there so the reading bar (.clds-loading, absolute) sits on this row's bottom edge. */
+:root {
+  --header-height: 92px;
+  --header-control-size: 34px;
+  /* Where the sticky sidebar stops below the header — header height + the shell's top gutter. */
+  --clds-sticky-top: calc(var(--header-height) + var(--clds-shell-top));
+}
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  height: var(--header-height);
+  display: flex;
+  align-items: center;
+  gap: var(--clds-space-8);
+  padding: 0 var(--clds-layout-gutter);
+  background: var(--clds-color-canvas);
+}
+/* ── Destination menu (the hamburger) — narrow screens only ─────────
+   On desktop the sidebar is always visible, so there is no button. Of the three bars, the middle one is
+   drawn as a background and the top and bottom as pseudo-elements — no icon file and no icon font
+   (zero dependencies). */
+.menu-toggle {
+  display: none;
+}
+.menu-toggle__bars,
+.menu-toggle__bars::before,
+.menu-toggle__bars::after {
+  display: block;
+  width: 18px;
+  height: 2px;
+  border-radius: 1px;
+  background: currentcolor;
+}
+.menu-toggle__bars {
+  position: relative;
+}
+.menu-toggle__bars::before,
+.menu-toggle__bars::after {
+  content: "";
+  position: absolute;
+  left: 0;
+}
+.menu-toggle__bars::before {
+  top: -6px;
+}
+.menu-toggle__bars::after {
+  top: 6px;
+}
+
+/* Narrow screens — the three do not fit on one row (at 430px the identity chip ran out of the window and
+   gave the document a horizontal scrollbar). The name and the identity take the first row; search takes the
+   whole row below. The fixed height is released but a minimum is held — so the header does not jump as you
+   move between screens. */
+@media (max-width: 900px) {
+  /* **grid, not flex-wrap** — which item stands on which row is nailed down by cell instead of left to the
+     browser's line-breaking judgment (flex judges by "the size before shrinking", which flips the result).
+     Three rows: bars · wordmark / identity chip / search.
+     **Why the chip is not beside the logo**: at 430px the space left beside the logo is 194px while the chip
+     is 280px. Put it there and the user id disappears into an ellipsis — and that id is the reason the chip
+     exists. On a row of its own it has 374px and fits whole. */
+  .header {
+    height: auto;
+    min-height: var(--header-height);
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas:
+      "menu brand"
+      "chip chip"
+      "search search";
+    align-items: center;
+    gap: var(--clds-space-5);
+    padding: var(--clds-space-6) var(--clds-layout-gutter);
+  }
+  .menu-toggle {
+    grid-area: menu;
+  }
+  .brand {
+    grid-area: brand;
+  }
+  .viewer {
+    grid-area: chip;
+    justify-self: end;
+    /* On anything narrower still (320px and such) it is held inside its cell, and the id takes the overflow
+       as an ellipsis — overflowing into a horizontal scrollbar on the document is the worst outcome. */
+    max-width: 100%;
+    overflow: hidden;
+  }
+  .header .search-preview {
+    grid-area: search;
+  }
+  /* The chip sticks to the right end of the header (margin-left: auto on .viewer). To stay on the first row
+     on a narrow screen it has to be able to shrink — for an ellipsis inside nested flex, both the outer and
+     the inner element need min-width: 0. Otherwise the chip insists on its content width and is pushed to
+     the next row. */
+  .viewer {
+    min-width: 0;
+    margin-left: 0;
+  }
+  .viewer__who,
+  .viewer .clds-mono {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  /* Only the three bars are left — no border and no fill. A finger still needs somewhere to land, so
+     padding makes 40px and the element is pulled left by the same amount so **the bars stand on the window's
+     gutter line** (the line the cards and the content stand on too). Otherwise the bars alone would sit
+     inset by the padding. */
+  .menu-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    border: 0;
+    background: none;
+    color: var(--clds-color-canvas-ink);
+    padding: 11px;
+    margin-left: -11px;
+    cursor: pointer;
+  }
+  /* Closed, it takes up no space either. */
+  .clds-side[data-open="false"] {
+    display: none;
+  }
+  /* **Open, it covers the content rather than pushing it**. It starts right below the header's first row
+     (bars · wordmark) at --menu-top, which Header.tsx measures, and **covers the identity chip and the
+     search row**; it **takes the full window width and is only as tall as the list** — the content below it
+     shows through the scrim. The first row stays visible so the bars (the hamburger) can close it again.
+     Behind it lies .scrim, so a click anywhere closes it. If the list is longer than the window left, it
+     scrolls inside itself. It stands above the header (z 20). */
+  .clds-side[data-open="true"] {
+    position: fixed;
+    top: var(--menu-top, var(--header-height));
+    left: 0;
+    right: 0;
+    z-index: 25;
+    width: auto;
+    max-height: calc(100vh - var(--menu-top, var(--header-height)));
+    overflow-y: auto;
+    background: var(--clds-color-canvas);
+    /* No bottom line — the panel's edge is said by the shadow and the darkness of the scrim. */
+    box-shadow: var(--clds-shadow-card);
+    padding: var(--clds-space-5) var(--clds-layout-gutter) var(--clds-space-8);
+  }
+  .scrim {
+    position: fixed;
+    inset: var(--menu-top, var(--header-height)) 0 0 0;
+    z-index: 24;
+    border: 0;
+    padding: 0;
+    margin: 0;
+    /* Dark only enough that the content beyond stays readable — the area under the drawer has to say
+       "it is still there". */
+    background: rgb(0 0 0 / 45%);
+    cursor: default;
+  }
+  /* While the drawer is open the document behind does not scroll — content moving behind the scrim under
+     your finger blurs what it is you are holding. */
+  body:has(.clds-side[data-open="true"]) {
+    overflow: hidden;
+  }
+}
+/* The scrim belongs to narrow screens — on desktop the sidebar always stands, so there is nothing to draw. */
+@media (min-width: 901px) {
+  .scrim {
+    display: none;
+  }
+}
+
+.brand {
+  margin: 0;
+  flex: none;
+}
+.brand a {
+  color: var(--clds-color-canvas-ink);
+  display: inline-flex;
+  align-items: center;
+}
+.brand a:hover {
+  text-decoration: none;
+}
+.brand-name {
+  font-size: var(--clds-text-brand);
+  line-height: 1;
+  font-weight: var(--clds-weight-bold);
+  letter-spacing: -0.015em;
+}
+
+/* The sidebar sits directly on the window ground (the dark surface). The design system's Nav colors are
+   written against the content panel, so they are overridden with the ink colors meant for the window ground
+   (the canvas-ink family).
+   The current position (the lime pill) is decided by tokens, so it is not touched here. */
+/* **The current position is excluded.** This selector has the same specificity as the [aria-current] rule
+   (both are class-level 2) and the product stylesheet comes later, so without the exclusion light ink would
+   land on the lime pill and the text would vanish.
+   The current position's ink color is decided by a token (--clds-color-nav-current-ink). */
+.clds-side .clds-nav__item:not([aria-current="page"]) {
+  color: var(--clds-color-canvas-ink);
+}
+.clds-side .clds-nav__group {
+  color: var(--clds-color-canvas-ink-faint);
+}
+.clds-side .clds-nav__group--rule {
+  border-top-color: var(--clds-color-rule);
+}
+.clds-side .clds-nav__item--soon {
+  color: var(--clds-color-canvas-ink-faint);
+}
+/* The hover veil — the ground is dark, so a white veil is laid over it. */
+.clds-side a.clds-nav__item:hover {
+  background-image: linear-gradient(var(--clds-color-nav-hover-veil), var(--clds-color-nav-hover-veil));
+}
+
+/* Identity chip — the right end of the header. The only identity the screen knows is the token's sub and
+   the parties, and no name is invented. margin-left: auto pushes it to stand at the right end — the search
+   field stops at 900px, which leaves a gap, and the chip sticks to the far side of that gap. */
+.viewer {
+  min-height: var(--header-control-size);
+  margin-left: auto;
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--clds-space-4);
+  background: var(--clds-color-field);
+  border: 1px solid var(--clds-color-line);
+  border-radius: var(--clds-radius-pill);
+  padding: 6px var(--clds-space-6);
+  color: var(--clds-color-ink);
+  white-space: nowrap;
+}
+/* The pill is a <span> and the link is inside it — the border brightens when the pointer is on **the
+   identity link** (not when it is on sign-out; the two go to different places). */
+.viewer:has(.viewer__who:hover) {
+  border-color: var(--clds-color-ink-faint);
+}
+.viewer__who {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--clds-space-4);
+  color: inherit;
+  /* For an ellipsis inside nested flex this layer needs 0 too (paired with the narrow-screen rule below). */
+  min-width: 0;
+}
+.viewer__who:hover {
+  text-decoration: none;
+}
+.viewer .clds-mono {
+  color: var(--clds-color-ink);
+  font-size: var(--clds-text-note);
+}
+.viewer .parties {
+  color: var(--clds-color-ink-dim);
+  font-size: var(--clds-text-small);
+}
+
+/* Both authentication profiles place sign-out beside the identity chip. */
+.logout {
+  background: none;
+  border: 0;
+  padding: 0;
+  font-family: inherit;
+  cursor: pointer;
+  flex: none;
+  align-self: center;
+  font-size: var(--clds-text-note);
+  color: var(--clds-color-ink-dim);
+  white-space: nowrap;
+}
+.logout:hover {
+  color: var(--clds-color-ink);
+}
+
+/* ── Sign-in required screen — one card, no shell ──────────────────────────
+   Drawn only when the server said so with a 401 (App.tsx). The way out is the one address the server gave. */
+.signin-page {
+  min-height: 100vh;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  padding: var(--clds-space-10);
+  background: var(--clds-color-canvas);
+  color: var(--clds-color-ink);
+}
+.signin-brand {
+  margin: 0 0 var(--clds-space-8);
+  font-size: var(--clds-text-brand);
+  font-weight: var(--clds-weight-bold);
+  letter-spacing: -0.015em;
+}
+.signin-card {
+  width: min(460px, calc(100vw - 40px));
+  margin: 0;
+  text-align: center;
+}
+.signin-card h1 {
+  font-size: 22px;
+  line-height: 1.25;
+  margin: 0 0 var(--clds-space-4);
+}
+.signin-card p {
+  margin: 0;
+}
+.signin-action {
+  display: block;
+  width: 100%;
+  margin-top: var(--clds-space-9);
+}
+.signin-url {
+  display: block;
+  margin-top: var(--clds-space-6);
+  color: var(--clds-color-ink-dim);
+  overflow-wrap: anywhere;
+}
+.signin-help {
+  margin-top: var(--clds-space-8);
+  padding-top: var(--clds-space-8);
+  border-top: 1px solid var(--clds-color-rule);
+}
+
+/* ── Content ─────────────────────────────────────────────────────── */
+#error {
+  margin-top: var(--clds-space-8);
+}
+
+/* Sparkline — the distribution of updates over time across the recent window. No storage; it is drawn from
+   the same array the list read. The grammar is area + line, and the stroke width is in screen pixels, so
+   stretching it horizontally does not thicken it. */
+.spark {
+  /* 18px at the bottom — the same as every other card's floor. Otherwise the axis labels sit right on the
+     footer rule. */
+  padding: var(--clds-space-6) var(--clds-space-8) var(--clds-space-8);
+}
+/* The plot — the reference box for the svg and the hover overlay. Height 130px = the viewBox height. */
+.spark__plot {
+  position: relative;
+  touch-action: pan-y;
+}
+.spark svg {
+  display: block;
+  width: 100%;
+  height: 130px;
+}
+/* The hover overlay — a vertical guide · a dot on the curve · a value bubble. It never gets in the
+   pointer's way (pointer-events: none). */
+.spark__guide {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--clds-color-ink-faint);
+  pointer-events: none;
+}
+.spark__dot {
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--clds-color-chart-line);
+  border: 2px solid var(--clds-color-surface);
+  box-sizing: border-box;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+.spark__tip {
+  position: absolute;
+  /* left/top are the dot's position (inline in Home.tsx). Here it is shifted relative to the dot —
+     horizontally (--tx) centered / pinned left / pinned right, vertically (--ty) above the dot (the
+     default) or below it (at a peak). It is held 12px clear so it does not cover the dot. */
+  --tx: -50%;
+  --ty: calc(-100% - 12px);
+  transform: translate(var(--tx), var(--ty));
+  display: grid;
+  gap: 2px;
+  padding: 6px 9px;
+  background: var(--clds-color-surface);
+  border: 1px solid var(--clds-color-line);
+  border-radius: var(--clds-radius-lg);
+  box-shadow: var(--clds-shadow-card);
+  font-size: var(--clds-text-small);
+  line-height: 1.3;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 1;
+}
+.spark__tip .clds-mono {
+  color: var(--clds-color-ink-dim);
+}
+/* At the edge buckets the bubble is pinned to one side so it does not run outside the plot */
+.spark__tip.tip--left {
+  --tx: -8px;
+}
+.spark__tip.tip--right {
+  --tx: calc(-100% + 8px);
+}
+.spark__tip.tip--below {
+  --ty: 12px;
+}
+/* The draw-on entrance — the line and area group opens from left to right (clip-path), the same direction
+   as the chart's "time flows" grammar. Home.tsx starts it by adding .draw--in after the first paint, so it
+   always sets off from 0%. The curve is ease-in-out: it picks up speed from a standstill and settles at the
+   end. A new window (the svg's key) starts from 0% again. Under reduced motion, base.css turns the
+   transition off. */
+.spark .draw {
+  clip-path: inset(0 100% 0 0);
+}
+.spark .draw--in {
+  clip-path: inset(0 0 0 0);
+  transition: clip-path 1.3s cubic-bezier(0.45, 0, 0.15, 1);
+}
+.spark .area {
+  fill: url(#spark-fill);
+}
+.spark .line {
+  fill: none;
+  stroke: var(--clds-color-chart-line);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.spark stop {
+  stop-color: var(--clds-color-brand);
+}
+.spark line {
+  stroke: var(--clds-color-line);
+  stroke-width: 1;
+}
+.spark .axis {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--clds-text-caption);
+  color: var(--clds-color-ink-faint);
+  margin-top: var(--clds-space-2);
+}
+
+/* ── Typed payload (reading a contract's blueprint) ────────────────────
+   A type notation per field, links for parties and contracts, indentation for nesting. No prose summary.
+   The table itself is the design system's Table variant="fields" — what remains here is what the cells
+   mean. */
+.typed-key {
+  color: var(--clds-color-ink-dim);
+  white-space: nowrap;
+}
+.typed-type {
+  color: var(--clds-color-ink-faint);
+  font-size: var(--clds-text-fine);
+  white-space: nowrap;
+}
+.nested {
+  margin: var(--clds-space-1) 0 var(--clds-space-1) var(--clds-space-7);
+  border-left: 2px solid var(--clds-color-line);
+  padding-left: var(--clds-space-5);
+}
+/* A nested value unfolded full width under its key row — it is one piece with the key row, so the dotted
+   line between them is removed */
+.clds-table--fields tr:has(+ tr.typed-nested) td {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+.clds-table--fields tr.typed-nested > td {
+  padding-top: 0;
+}
+/* The reason a cell was left as the original, because it did not match the schema */
+.why {
+  color: var(--clds-color-problem);
+  font-size: var(--clds-text-caption);
+}
+/* An expired value — it wears the semantic color as is */
+.expired {
+  color: var(--clds-color-negative);
+}
+
+/* ── The event table on transaction detail — fixed column widths (colgroup), long identifiers wrap inside
+   their cell. One event is two rows (the event row + the arguments row). */
+.tx-events {
+  table-layout: fixed;
+}
+/* The event table's own cells only — inherited by the field table standing inside it, numbers would wrap
+   character by character in the narrow cells */
+.tx-events > tbody > tr > td {
+  overflow-wrap: anywhere;
+}
+/* A chip is nowrap because value + Copy is one piece, but when the cell is narrower than that, it wraps
+   inside the piece — better than covering the neighbouring cell. */
+.tx-events .clds-badge .clds-inline {
+  white-space: normal;
+}
+.clds-table tr.tx-event--open td {
+  border-bottom: 0;
+  padding-bottom: var(--clds-space-1);
+}
+.clds-table tr.tx-args td {
+  padding-top: 0;
+  /* Indented by the width of the ordinal column — so it shows whose arguments these are */
+  padding-left: calc(var(--clds-space-8) + 43px);
+}
+/* The two rows are one piece, so hover never paints just one half */
+.clds-table tr.tx-args:hover td,
+.clds-table tr.tx-event:hover td {
+  background: transparent;
+}
+.tx-args .clds-disclosure + .clds-disclosure,
+.tx-args .clds-muted + .clds-disclosure {
+  margin-top: var(--clds-space-2);
+}
+
+
+/* ── The original-as-table (JsonTable) — the path is the key, the leaf the value. A group head (the array
+   number) gets a blank line above it. */
+.json-table__path {
+  color: var(--clds-color-ink-dim);
+  white-space: nowrap;
+}
+.json-table__sep {
+  color: var(--clds-color-ink-faint);
+  margin: 0 var(--clds-space-2);
+}
+.clds-table.json-table tr.json-table__head td {
+  border-bottom: 0;
+  padding-top: var(--clds-space-4);
+  padding-bottom: 0;
+}
+
+
+/* ── The API screen — where openapi.json is unfolded. In the list one operation is one row, and expanding
+   it puts the detail underneath. */
+/* The lede is kept away from the list — up against it, the first operation reads as part of the prose. */
+.api__lede {
+  margin: 0 0 var(--clds-space-9);
+  max-width: 78ch;
+}
+/* One operation row. Collapsed is the default look, so the spacing between rows sets this screen's
+   impression. */
+.api__op + .api__op {
+  margin-top: var(--clds-space-2);
+}
+/* summary is inline-flex, which swallows the spaces between words — the gap is given directly.
+   The path never wraps, and on narrow screens the summary is the first thing to give way. */
+.api__op > summary {
+  gap: var(--clds-space-4);
+  padding: var(--clds-space-3) 0;
+  max-width: 100%;
+}
+.api__path {
+  color: var(--clds-color-ink);
+  font-weight: var(--clds-weight-bold);
+  white-space: nowrap;
+  /* The path does not shrink — what this row calls is the path. */
+  flex: none;
+}
+/* As it narrows, the summary shrinks first. Without min-width: 0 a flex child will not shrink below its
+   content, so overflow never engages and the screen is pushed sideways instead of the row giving way. */
+.api__summary {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The expanded inside — indented under the arrow so the eye ties the description to its operation. */
+.api__detail {
+  margin: var(--clds-space-3) 0 var(--clds-space-8);
+  padding-left: calc(12px + var(--clds-space-4));
+  border-left: 1px solid var(--clds-color-rule);
+}
+.api__detail > p {
+  margin: 0 0 var(--clds-space-4);
+}
+/* The Parameters and Responses headings — only top spacing, so each reads as one body with the block
+   below it. */
+.api__label {
+  margin: var(--clds-space-8) 0 var(--clds-space-3);
+  font-weight: var(--clds-weight-bold);
+}
+.api__response + .api__response {
+  margin-top: var(--clds-space-7);
+}
+/* A branch heading (when kind: "available") — kept up against that branch's table. */
+.api__case {
+  margin: var(--clds-space-5) 0 var(--clds-space-2);
+}
+
+.theme-toggle {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--header-control-size);
+  height: var(--header-control-size);
+  padding: 0;
+  border-radius: var(--clds-radius-pill);
+  border-color: var(--clds-color-ink-faint);
+  background: var(--clds-color-surface);
+  /* The glyph wears the key color — the yellow a color emoji would have brought along, swapped for the
+     yellow this product owns.
+     Why brand is not used directly: that value (#f6ffa4) is for dark surfaces only and disappears on the
+     light theme's white panel. accent splits per theme (dark #f6ffa4 · light #526300), so it reads in
+     both. */
+  color: var(--clds-color-accent);
+  font-size: 18px;
+  line-height: 1;
+}
+@media (max-width: 900px) {
+  .header {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      "menu brand theme"
+      "chip chip chip"
+      "search search search";
+  }
+  .theme-toggle {
+    grid-area: theme;
+  }
+}
+
+.session-token { margin-top: var(--clds-space-8); }
+.party-permissions { display: flex; flex-wrap: wrap; gap: var(--clds-space-3); }
+@media (max-width: 600px) {
+  .status-fields { grid-template-columns: minmax(0, 1fr); }
+  .status-fields > dt { border-bottom: 0; padding-bottom: 0; }
+  .status-fields > dd { padding-top: var(--clds-space-3); }
+  #view-status .clds-section__head,
+  #parties-box .clds-section__head { flex-wrap: wrap; gap: var(--clds-space-3); }
+  #view-status .clds-section__note,
+  #parties-box .clds-section__note { flex-basis: 100%; }
+  #parties-table, #parties-table tbody, #parties-table tr, #parties-table td {
+    display: block;
+    width: 100%;
+  }
+  #parties-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  #parties-table td {
+    border: 0;
+    padding-top: var(--clds-space-3);
+    padding-bottom: var(--clds-space-3);
+    white-space: normal;
+  }
+  #parties-table tr {
+    padding: var(--clds-space-5) 0;
+    border-bottom: 1px solid var(--clds-color-rule);
+  }
+}
+
+/* ── Timeline — contract lifetime bars ────────────────────────────────────
+   The first screen in this product where a picture takes the panel (the grounds are written at the head of
+   Timeline.tsx).
+   One row splits into a name cell on the left and a track on the right, and a bar stands inside the track
+   in percentages — so its place follows when the window width changes. The axis ticks use the same grid, so
+   they line up vertically with the tracks. */
+.tl {
+  min-width: 640px;
+  padding: var(--clds-space-4) 0;
+}
+/* The rows are dense — how many fit on one screen is what this picture is worth (overlap only shows when
+   several rows are seen together).
+   Bars are 10px and the gap between rows is 1px: any closer and the bars read as one mass. */
+.tl__row {
+  display: grid;
+  /* Two things live in the left cell — the contract id and the parties to it. At 150px only the id
+     barely fit. */
+  grid-template-columns: 260px 1fr;
+  align-items: center;
+  gap: var(--clds-space-5);
+  padding: 1px var(--clds-space-6);
+}
+.tl__row--axis {
+  padding-bottom: var(--clds-space-5);
+}
+.tl__label {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: var(--clds-space-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--clds-text-small);
+}
+.tl__track {
+  position: relative;
+  height: 10px;
+  border-radius: var(--clds-radius-pill);
+  background: var(--clds-color-field);
+}
+/* The axis has no ground — only the ticks float. */
+.tl__track--axis {
+  background: none;
+  height: 14px;
+}
+.tl__tick {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  font-size: var(--clds-text-micro);
+  color: var(--clds-color-ink-faint);
+  white-space: nowrap;
+}
+.tl__tick[data-edge="start"] {
+  transform: none;
+}
+.tl__tick[data-edge="end"] {
+  transform: translateX(-100%);
+}
+.tl__group {
+  margin-bottom: var(--clds-space-5);
+}
+/* The parties are dimmer than the id — the key for finding a row is the contract id, and ownership is the
+   circumstance beside it. */
+.tl__parties {
+  /* A button that does not look like one — all it does is copy, so standing as plain text keeps the row
+     uncluttered. */
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+  color: var(--clds-color-ink-dim);
+  font-size: var(--clds-text-small);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tl__parties:hover {
+  color: var(--clds-color-ink);
+}
+.tl__group-head {
+  padding: var(--clds-space-2) var(--clds-space-6);
+  font-size: var(--clds-text-compact);
+}
+.tl__bar {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: var(--clds-radius-pill);
+  display: block;
+}
+.tl__track a {
+  display: contents;
+}
+.tl__bar--alive {
+  background: var(--clds-color-accent);
+}
+.tl__bar--archived {
+  background: var(--clds-color-ink-faint);
+}
+/* A bar whose end is unknown says so with **a different pattern from a live one** — given the same color
+   it would read as "still there". */
+.tl__bar--unknown {
+  background: repeating-linear-gradient(
+    135deg,
+    var(--clds-color-ink-faint) 0 4px,
+    transparent 4px 8px
+  );
+}
+/* A bar that began before the window — its left end is faded out to say "this is not where it started". */
+.tl__bar--open-left {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  mask-image: linear-gradient(to right, transparent, #000 14px);
+}
+.tl__track:hover .tl__bar {
+  filter: brightness(1.25);
+}
+.tl__legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--clds-space-3);
+  padding: var(--clds-space-5) var(--clds-space-6) 0;
+  font-size: var(--clds-text-small);
+  color: var(--clds-color-ink-dim);
+}
+.tl__key {
+  width: 18px;
+  height: 8px;
+  border-radius: var(--clds-radius-pill);
+  display: inline-block;
+}
+.tl__key--alive {
+  background: var(--clds-color-accent);
+}
+.tl__key--archived {
+  background: var(--clds-color-ink-faint);
+}
+.tl__key--unknown {
+  background: repeating-linear-gradient(
+    135deg,
+    var(--clds-color-ink-faint) 0 4px,
+    transparent 4px 8px
+  );
+}
+
+/* ── The search preview panel ─────────────────────────────────────────────
+   This is the wrapper around the search row. The panel floats absolutely positioned right below the row, so
+   the wrapper has to be **the same width** as the row — which is why the wrapper also carries the cap the
+   design system put on the search row (max-width: 900px on .clds-searchbar; the grounds are in control.css).
+   If the wrapper alone stretched to the end, the panel's right edge would run outside the row on a wide
+   screen. */
+.search-preview {
+  position: relative;
+  flex: 1;
+  max-width: 900px;
+  min-width: 0;
+}
+.search-preview .clds-searchbar {
+  width: 100%;
+}
+.search-preview__panel {
+  position: absolute;
+  top: calc(100% + var(--clds-space-4));
+  left: 0;
+  right: 0;
+  background: var(--clds-color-surface);
+  color: var(--clds-color-ink);
+  border: 1px solid var(--clds-color-line);
+  border-radius: var(--clds-radius-2xl);
+  box-shadow: var(--clds-shadow-card);
+  overflow: hidden;
+}
+.search-preview__heading {
+  padding: var(--clds-space-8) var(--clds-space-9) var(--clds-space-4);
+  font-weight: 700;
+}
+.search-preview__status,
+.search-preview__hint {
+  padding: var(--clds-space-4) var(--clds-space-9);
+  color: var(--clds-color-ink-dim);
+  font-size: var(--clds-text-small);
+}
+/* So the panel does not cover the screen when there are many rows — the overflow scrolls inside this
+   box. */
+.search-preview__list {
+  max-height: min(360px, 40vh);
+  overflow-y: auto;
+}
+.search-preview__option {
+  display: flex;
+  align-items: center;
+  gap: var(--clds-space-7);
+  width: 100%;
+  padding: var(--clds-space-7) var(--clds-space-9);
+  text-align: left;
+  border: 0;
+  border-top: 1px solid var(--clds-color-rule);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+/* The row under the pointer and the row picked with the keyboard use the same mark — two different marks
+   blur which one will open. */
+.search-preview__option:hover,
+.search-preview__option[aria-selected="true"] {
+  background: var(--clds-color-row-hover);
+}
+.search-preview__kind {
+  flex: 0 0 90px;
+  font-size: var(--clds-text-small);
+  font-weight: 700;
+  color: var(--clds-color-accent);
+}
+.search-preview__text {
+  flex: 1;
+  min-width: 0;
+}
+.search-preview__label,
+.search-preview__detail {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.search-preview__label {
+  font-size: var(--clds-text-default);
+}
+.search-preview__detail {
+  font-size: var(--clds-text-small);
+  color: var(--clds-color-ink-dim);
+  margin-top: var(--clds-space-1);
+}
+.search-preview__footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--clds-space-4);
+  padding: var(--clds-space-7) var(--clds-space-9);
+  border-top: 1px solid var(--clds-color-rule);
+  font-size: var(--clds-text-small);
+  color: var(--clds-color-ink-dim);
+}
+/* Clear is a word (the picture exception is not widened). It stands quietly inside the search row. */
+.search-preview__clear {
+  border: 0;
+  background: transparent;
+  color: var(--clds-color-ink-dim);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--clds-text-small);
+  padding: var(--clds-space-2) var(--clds-space-5);
+}
+.search-preview__clear:hover {
+  color: var(--clds-color-ink);
+}
+@media (max-width: 600px) {
+  .search-preview__option {
+    gap: var(--clds-space-4);
+    padding: var(--clds-space-6);
+  }
+  .search-preview__kind {
+    flex-basis: 70px;
+  }
+  .search-preview__heading,
+  .search-preview__hint,
+  .search-preview__status,
+  .search-preview__footer {
+    padding-left: var(--clds-space-6);
+    padding-right: var(--clds-space-6);
+  }
+}

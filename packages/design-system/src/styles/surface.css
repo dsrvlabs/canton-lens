@@ -1,0 +1,273 @@
+/* ── Surfaces ─────────────────────────────────────────────────────────
+   Section · summary card (Card) · list card (ListCard) · banner (Banner).
+   All the same material: surface ground + line border + 2xl radius + card shadow. */
+
+.clds-section {
+  background: var(--clds-color-surface);
+  /* 1px border — in the dark theme this line is what makes the outline of a surface.
+     The lightness gap between ground (#0e0e0e) and card (#1f1f1f) is only 1.1:1, too faint on its own. */
+  border: 1px solid var(--clds-color-line);
+  border-radius: var(--clds-radius-2xl);
+  /* No shadow — the lightness gap between ground (#f3f3f6) and surface (#fff) plus the 1px line is enough.
+     Lifting is the business of what floats above and covers something (.clds-menu · .clds-skip). */
+  overflow: hidden;
+  margin-top: var(--clds-space-8);
+}
+.clds-section[hidden] {
+  display: none;
+}
+.clds-section__head {
+  font-size: var(--clds-text-heading);
+  font-weight: var(--clds-weight-heavy);
+  margin: 0;
+  /* No divider beneath — title and body are parted by whitespace. When a table follows directly, the line
+     under the table head is the boundary. */
+  padding: var(--clds-space-8) var(--clds-space-8) var(--clds-space-5);
+  display: flex;
+  align-items: baseline;
+  letter-spacing: -0.01em;
+}
+/* The empty cell that pushes what follows to the right of the head */
+.clds-section__spacer {
+  flex: 1;
+}
+.clds-section__note {
+  font-size: var(--clds-text-small);
+  font-weight: 400;
+  color: var(--clds-color-ink-faint);
+}
+/* A word right after the title — the head is flex, so the space between the words disappears and the
+   margin is given directly. */
+.clds-section__subtitle {
+  font-size: var(--clds-text-small);
+  font-weight: 400;
+  color: var(--clds-color-ink-faint);
+  margin-left: var(--clds-space-3);
+}
+/* The bottom padding is 18px, the same as the head's top padding — the card breathes the same above and
+   below. The top is 14px: the head is already giving up 10px. */
+.clds-section__body {
+  padding: var(--clds-space-7) var(--clds-space-8) var(--clds-space-8);
+}
+/* Foot — the text at the very bottom of a card. The bottom padding is 18px, like every other bottom. The
+   top is 18px too, so the breath between the line and the text is the same. */
+.clds-section__foot {
+  padding: var(--clds-space-8);
+  font-size: var(--clds-text-small);
+  color: var(--clds-color-ink-faint);
+  border-top: 1px solid var(--clds-color-rule);
+}
+.clds-section__foot a {
+  font-weight: var(--clds-weight-semibold);
+}
+.clds-section__foot p {
+  margin: 0 0 var(--clds-space-2);
+}
+.clds-section__foot p:last-child {
+  margin-bottom: 0;
+}
+
+/* Summary card row — the values that came from one query stand side by side. */
+.clds-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--clds-space-7);
+  margin-top: var(--clds-space-8);
+}
+/* Summary card — **label on top, value at the bottom.** The space between them is left empty so that the
+   numbers read on one line even when the cards differ in height. A two-line label still leaves the value
+   at the bottom. */
+.clds-card {
+  background: var(--clds-color-surface);
+  /* 1px border — in the dark theme this line is what makes the outline of a surface.
+     The lightness gap between ground (#0e0e0e) and card (#1f1f1f) is only 1.1:1, too faint on its own. */
+  border: 1px solid var(--clds-color-line);
+  border-radius: var(--clds-radius-2xl);
+  padding: var(--clds-space-8);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: var(--clds-space-9);
+  /* The height is the one for "three lines of note showing" — .clds-card__sub below always takes the
+     three-line slot even when folded, so hover does not grow the card and the cards in a row do not jolt. */
+  /* No shadow — the lightness gap between ground and surface plus the 1px line is enough.
+     Lifting is the business of what floats above and covers something (.clds-menu · .clds-skip). */
+}
+a.clds-card {
+  color: var(--clds-color-ink);
+}
+a.clds-card:hover {
+  text-decoration: none;
+  border-color: var(--clds-color-accent);
+}
+/* Label — not a small uppercase label but **one line of sentence case**, 17px bold like a section title.
+   What is read first on a card is "a number about what", so it is not set small and faint. */
+.clds-card__label {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--clds-space-5);
+  font-size: var(--clds-text-metric-label);
+  line-height: 1.25;
+  color: var(--clds-color-ink);
+  font-weight: var(--clds-weight-heavy); /* 17px bold, the same as a section title */
+}
+/* "From here it goes somewhere" — only on a pressable card. On hover it follows the card's colour. */
+.clds-card__go {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--clds-color-ink-dim);
+}
+a.clds-card:hover .clds-card__go {
+  color: var(--clds-color-accent);
+}
+/* Bottom row — value above, note below. **The three-line slot for the note (60px) is always reserved and
+   only its position changes**: by default that slot sits empty **above** the value, putting the value at
+   the foot of the card; when a hand reaches it the slot moves below the value and the note fills it — the
+   value rises and the card's height stays as it was. */
+.clds-card__foot {
+  display: grid;
+  grid-template-rows: auto auto;
+  padding-top: 0;
+  transition: padding-top 0.2s ease;
+}
+/* A value written in mono (the offset on Ledger end) also keeps the card's number size — .clds-mono drops
+   it to 12px, which left the number small on that card alone. Two classes, so it wins on specificity. */
+.clds-card__value.clds-mono {
+  font-size: var(--clds-text-metric-value);
+}
+.clds-card__value {
+  font-size: var(--clds-text-metric-value);
+  font-weight: var(--clds-weight-bold);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.clds-card__unit {
+  font-size: var(--clds-text-compact);
+  color: var(--clds-color-ink-dim);
+  font-weight: var(--clds-weight-medium);
+  margin-left: var(--clds-space-1);
+}
+/* Note — the lower cell of the bottom row. **Exactly three lines (18px×3) + 6px top padding = 60px**: the
+   line height is pinned in whole px — with an em multiple (1.45em = 17.4px) the rounding piles up and the
+   bottom of the third line gets clipped.
+   Beyond three lines it is cut (…) and the full text goes into title (Card attaches it to a string sub). */
+.clds-card__sub {
+  font-size: var(--clds-text-small);
+  color: var(--clds-color-ink-dim);
+  line-height: 18px;
+  height: 60px;
+  padding-top: var(--clds-space-3);
+  box-sizing: border-box;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+}
+/* **In the default state only the value sits at the foot of the card; when a hand reaches it the note
+   opens and the value rises with it.**
+   · It is hidden only on devices where a hand reaches (@media hover) — a screen used with a finger has no
+     hover, and hiding there would leave no way to see the note. On those it is always unfolded.
+   · **A card that is not a link moves the same way**, as specified. The note on Ledger end is where "as of
+     when is this screen" is said, so know that it cannot be read in the default state — it stays there for
+     reading programs (only the painting and the height are hidden) and comes out when a hand is put on it.
+   · It has to show for someone moving by keyboard too, so :focus-visible · :focus-within are taken as well.
+   · The note's slot (60px) is always there and only moves above ↔ below the value — the card's height does
+     not change, and by default the value is at the bottom.
+   Under a reduced-motion setting base.css turns the transition off. */
+@media (hover: hover) {
+  /* Default: the note's slot (60px) is left empty above the value → the value goes to the bottom */
+  .clds-card .clds-card__foot {
+    padding-top: 60px;
+  }
+  .clds-card .clds-card__sub {
+    height: 0;
+    padding-top: 0;
+    opacity: 0;
+    transition:
+      height 0.2s ease,
+      padding-top 0.2s ease,
+      opacity 0.18s ease;
+  }
+  /* When a hand reaches it: the empty slot moves below the value and the note fills it — 60px in total */
+  .clds-card:hover .clds-card__foot,
+  .clds-card:focus-visible .clds-card__foot,
+  .clds-card:focus-within .clds-card__foot {
+    padding-top: 0;
+  }
+  .clds-card:hover .clds-card__sub,
+  .clds-card:focus-visible .clds-card__sub,
+  .clds-card:focus-within .clds-card__sub {
+    height: 60px;
+    padding-top: var(--clds-space-3);
+    opacity: 1;
+  }
+}
+/* A card that needs the eye — worn only when the consumer has judged it so. */
+.clds-card--alert {
+  border-color: var(--clds-color-problem);
+}
+.clds-card--alert .clds-card__value {
+  color: var(--clds-color-problem);
+}
+
+/* List card — sheets stacked vertically inside a section. For when a table row cannot hold enough. */
+.clds-listcard {
+  padding: 11px var(--clds-space-8);
+  border-bottom: 1px solid var(--clds-color-rule);
+}
+.clds-listcard--link {
+  cursor: pointer;
+}
+.clds-listcard--link:focus-visible {
+  outline-offset: -2px;
+}
+.clds-listcard:last-child {
+  border-bottom: 0;
+}
+.clds-listcard:hover {
+  background: var(--clds-color-row-hover);
+}
+.clds-listcard--alert {
+  border-left: 3px solid var(--clds-color-problem);
+  padding-left: 15px;
+}
+.clds-listcard__amount {
+  font-size: var(--clds-text-amount);
+  font-weight: var(--clds-weight-bold);
+}
+.clds-listcard__sub {
+  font-size: var(--clds-text-small);
+  color: var(--clds-color-ink-dim);
+  margin-top: 3px;
+}
+.clds-listcard__meta {
+  color: var(--clds-color-ink-dim);
+}
+.clds-listcard--alert .clds-listcard__meta {
+  color: var(--clds-color-problem);
+  font-weight: var(--clds-weight-semibold);
+}
+
+/* Banner — one line that states a circumstance. A thick line on the left + a pale ground. */
+.clds-banner {
+  border-left: 3px solid var(--clds-color-problem);
+  padding: var(--clds-space-5) var(--clds-space-7);
+  border-radius: 0 var(--clds-radius-lg) var(--clds-radius-lg) 0;
+  background: var(--clds-color-problem-soft);
+  color: var(--clds-color-ink);
+  /* It carries no outer margin — where it stands decides the spacing. */
+  margin: 0;
+}
+.clds-banner--info {
+  border-left-color: var(--clds-color-accent);
+  background: var(--clds-color-accent-soft);
+}

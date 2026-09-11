@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  // For publishing — the same rules for checking, but this time it emits. Relative imports' .ts/.tsx
+  // becomes .js (rewriteRelativeImportExtensions) — the source names real files, the output real output.
+  "compilerOptions": {
+    "noEmit": false,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "rootDir": "src",
+    "outDir": "dist",
+    "rewriteRelativeImportExtensions": true
+  }
+}

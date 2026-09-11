@@ -1,0 +1,136 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# This workflow uses no secrets, and nothing here talks to a live participant or identity provider. The checks
+# that need a real node are run by hand against one. So a green light here means
+# **everything verifiable without live inputs has been verified** — not that the product works against a
+# particular node today.
+permissions:
+  contents: read
+
+jobs:
+  # A job with no install step. If the **core code the tests walk** pulls in someone else's package, this turns
+  # red — it is the net that keeps packages/core at zero runtime dependencies. It is not a proof, though: a file
+  # the tests never reach could import an external package and this job would still be green (that case belongs
+  # to typecheck·lint and human review).
+  #
+  # Both node 22 and 24 run so that **both ends** of the engines range are exercised. Running `.ts` without a
+  # flag is the default from Node 22.18.0, which is why engines says `>=22.18.0` — `"22"` resolves to the latest
+  # 22.x, so this job does not cover the whole 22 line.
+  unit:
+    name: unit (core, node ${{ matrix.node }}, no install)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["22", "24"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - run: node --test "packages/core/src/**/*.test.ts"
+
+  # Both ends of the engines range, for the same reason as `unit` — and one more since the apps/ layout:
+  # backend reaches core through a pnpm link, and Node strips the types on the way in. Whether it accepts
+  # a .ts file behind a link into node_modules is Node's rule, not ours, so the oldest supported runtime
+  # walks that path too, not only the newest.
+  checks:
+    name: tests · typecheck · lint
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["22", "24"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      # Backend/core tests and frontend authentication, transport and rendering tests.
+      # The API check (apps/backend/src/check) stands recorded ledger responses in place of a node and runs the
+      # *same* check code that runs against a live participant; the only thing that differs is
+      # the `send` function. It needs ajv, so it can only run in this job, not in `unit`.
+      # Authentication tests use synthetic OAuth/ledger responses, not live institution services.
+      - run: pnpm test
+      - run: pnpm typecheck
+      - run: pnpm lint
+      # The openapi response schemas are generated from apps/backend/src/responses.ts (core types) and committed.
+      # If a fresh generation differs from what is committed, the code and the contract have drifted apart —
+      # run `pnpm openapi:generate` and commit the result.
+      - run: pnpm openapi:check
+      # Assemble what actually ships. Types and tests do not catch what only the bundler sees — an asset or CSS
+      # import that does not resolve, or a package `exports` condition that is wrong for the build. The frontend
+      # config refuses to start without a profile, and `.env` is not committed, so the profile is named here:
+      # shared-identity is the one that needs no Browser OIDC values, so nothing has to be invented for CI.
+      - run: pnpm build
+        env:
+          VITE_AUTH_MODE: shared-identity
+
+  # Nothing above walks docker/. Those images install differently (`--prod` behind a workspace filter),
+  # pin their own Node major, and route through nginx instead of Vite's dev server — so a dependency
+  # change, a moved path or an edited location block can break the deployment path while every job
+  # above stays green. This builds both images and then asks the running pair the four questions the
+  # route map has to answer, which a build alone cannot check.
+  #
+  # No live inputs, like the rest of this workflow. The OIDC values are only written into the bundle
+  # and never contacted, `.invalid` cannot resolve by definition, and an /api request without a token
+  # is refused before any ledger call. The profile pair is browser-oidc + caller-bearer: that is the
+  # pair whose refusal is a plain 401, which makes the assertion below meaningful.
+  docker:
+    name: docker images · route map
+    runs-on: ubuntu-latest
+    env:
+      EXPLORER_PORT: "18080"
+      VITE_AUTH_MODE: browser-oidc
+      VITE_OIDC_ISSUER: https://idp.invalid/realms/explorer
+      VITE_OIDC_CLIENT_ID: explorer-browser
+      VITE_OIDC_REDIRECT_URI: http://localhost:18080/
+      VITE_OIDC_POST_LOGOUT_REDIRECT_URI: http://localhost:18080/
+      VITE_OIDC_SCOPES: openid profile
+      LEDGER_AUTH_MODE: caller-bearer
+      LEDGER_BASE: https://canton.invalid
+      PUBLIC_ENTRY_URL: http://localhost:18080/
+    steps:
+      - uses: actions/checkout@v4
+      # Compose interpolates from the process environment, so no docker/.env is written here. The
+      # required values above stand in for it; a missing one stops compose before any build starts.
+      - run: docker compose -f docker/compose.yaml build
+      # --wait holds until the Backend's HEALTHCHECK passes, so the checks below do not race startup.
+      - run: docker compose -f docker/compose.yaml up -d --wait
+      - name: The route map answers
+        env:
+          BASE: http://127.0.0.1:18080
+        run: |
+          fail=0
+          body=$(mktemp)
+          check() {
+            status=$(curl -sS -o "$body" -w '%{http_code}' "$BASE$2")
+            if [ "$status" != "$3" ] || ! grep -qF -- "$4" "$body"; then
+              echo "FAIL $1 — $2 returned $status; wanted $3 containing $4"
+              head -c 200 "$body"; echo
+              fail=1
+            else
+              echo "ok   $1 — $2 $status"
+            fi
+          }
+          # Served from the bundle inside the frontend image.
+          check "static"       /              200 '<title>Canton Lens</title>'
+          # No such file exists: the loaded bundle routes this address itself.
+          check "SPA fallback" /party/abc123  200 '<title>Canton Lens</title>'
+          # Generated by the Backend, so its arrival proves the forward reaches it.
+          check "proxy"        /openapi.json  200 '"openapi"'
+          # The Backend's own refusal — not nginx's 404, not a static file, not a 502.
+          check "proxy /api"   /api/home      401 '"reason":"unauthenticated"'
+          exit $fail
+      - if: failure()
+        run: docker compose -f docker/compose.yaml logs --no-color
+      - if: always()
+        run: docker compose -f docker/compose.yaml down

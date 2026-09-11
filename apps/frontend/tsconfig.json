@@ -1,0 +1,18 @@
+{
+  "extends": "../../tsconfig.base.json",
+  // The browser's seat — flips only three of base's node assumptions: dom in lib, the vite client in types, JSX.
+  // The rest (the strict family·erasableSyntaxOnly·verbatimModuleSyntax·relative imports with extensions) stays as is.
+  "compilerOptions": {
+    "lib": ["es2023", "dom", "dom.iterable"],
+    "types": ["vite/client"],
+    "jsx": "react-jsx",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "rewriteRelativeImportExtensions": false,
+    // The workspace package (the design system) is read from src, not dist — the "source" condition in
+    // exports. Type checking runs without a build and edits land at once. The shape of what ships (dist) is
+    // kept by that package's build.
+    "customConditions": ["source"]
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx", "vite.config.ts"]
+}

@@ -1,0 +1,5 @@
+{
+  "extends": "../../tsconfig.base.json",
+  // Pure domain logic with zero runtime dependencies. Node runs these .ts files as is (see base: erasableSyntaxOnly).
+  "include": ["src/**/*.ts"]
+}

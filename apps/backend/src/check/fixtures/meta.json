@@ -1,0 +1,10 @@
+{
+  "recordedAt": "2026-09-06T17:49:52.836Z",
+  "users": [
+    "alice",
+    "bob",
+    "carol"
+  ],
+  "cantonVersion": "3.4.8",
+  "ledger": "http://localhost:7575"
+}

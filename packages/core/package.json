@@ -1,0 +1,26 @@
+{
+  "name": "@canton-lens/core",
+  "version": "0.0.0",
+  "type": "module",
+  "private": true,
+  "description": "Pure backend domain logic for Canton Lens: identifier matching, visibility filtering, lag and balance computation. No runtime dependencies.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "src"
+  ],
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "scripts": {
+    "test": "node --test \"src/**/*.test.ts\"",
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "typescript": "^7.0.2"
+  },
+  "license": "Apache-2.0"
+}

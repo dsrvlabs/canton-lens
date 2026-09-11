@@ -1,0 +1,24 @@
+# Build context for docker/backend.Dockerfile and docker/frontend.Dockerfile. Anything listed
+# here cannot enter an image even when a Dockerfile copies the directory that holds it.
+
+# pnpm installs these inside the image. A host copy would carry the host platform's binaries.
+node_modules
+**/node_modules
+
+# Build output. The frontend image builds its own bundle; a stale host dist must not ship instead.
+**/dist
+
+# Real configuration values. Both processes read environment variables, never a file, so no
+# environment file belongs in an image — and an image is something you distribute.
+**/.env
+**/.env.*
+
+.git
+.gitignore
+.github
+
+# Coding-agent files: local only, and already outside the published repository.
+.claude
+CLAUDE.md
+
+.DS_Store

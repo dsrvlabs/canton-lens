@@ -1,0 +1,105 @@
+/* ── Pieces ───────────────────────────────────────────────────────────
+   Badges · value notation · copy button. The things that repeat most in lists and detail screens. */
+
+.clds-mono {
+  font-family: var(--clds-font-mono);
+  font-size: var(--clds-text-small);
+  font-variant-numeric: tabular-nums;
+}
+/* Secondary values — time stamps, "none", dashes */
+.clds-muted {
+  color: var(--clds-color-ink-dim);
+  font-size: var(--clds-text-small);
+}
+/* Even more secondary — "and 3 more" */
+.clds-faint {
+  color: var(--clds-color-ink-faint);
+  font-size: var(--clds-text-small);
+  white-space: nowrap;
+}
+/* A line where a value and the button that handles it sit together as one lump */
+.clds-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--clds-space-2);
+  white-space: nowrap;
+}
+.clds-crumb {
+  color: var(--clds-color-ink-dim);
+  font-size: var(--clds-text-small);
+  margin: var(--clds-space-8) 0 0;
+}
+
+.clds-copy {
+  border: 0;
+  background: transparent;
+  padding: 0 var(--clds-space-1);
+  color: var(--clds-color-ink-faint);
+  font-size: var(--clds-text-caption);
+  line-height: 1;
+  cursor: pointer;
+}
+.clds-copy:hover {
+  color: var(--clds-color-ink);
+}
+
+/* Badge — a one-word fact. Its colour comes from the semantic colours, never overlapping the accent. */
+.clds-badge {
+  display: inline-block;
+  border-radius: var(--clds-radius-pill);
+  padding: 1px var(--clds-space-4);
+  font-size: var(--clds-text-caption);
+  background: var(--clds-color-subtle);
+  color: var(--clds-color-ink-dim);
+}
+/* A link inside a badge takes the badge's colour — so link colour does not beat the semantic colour. */
+.clds-badge a,
+a.clds-badge {
+  color: inherit;
+}
+a.clds-badge:hover {
+  text-decoration: underline;
+}
+
+.clds-badge--solid {
+  color: var(--clds-color-ink);
+}
+.clds-badge--accent {
+  background: var(--clds-color-accent-soft);
+  color: var(--clds-color-accent);
+}
+.clds-badge--positive {
+  background: var(--clds-color-positive-soft);
+  color: var(--clds-color-positive);
+}
+.clds-badge--negative {
+  background: var(--clds-color-negative-soft);
+  color: var(--clds-color-negative);
+}
+
+/* Corners — pill (default) and rounded rectangle. The closer to a raw value, the closer to a rectangle. */
+.clds-badge--rounded {
+  border-radius: var(--clds-radius-md);
+}
+/* A badge that holds a value — where a name such as created/archived sits */
+.clds-badge--mono {
+  font-family: var(--clds-font-mono);
+  font-size: var(--clds-text-small);
+  padding: var(--clds-space-1) var(--clds-space-4);
+  white-space: nowrap;
+}
+/* Where the word is itself the verdict — direction, state */
+.clds-badge--strong {
+  font-weight: var(--clds-weight-semibold);
+  letter-spacing: var(--clds-tracking-tight);
+  padding: var(--clds-space-1) 9px;
+  white-space: nowrap;
+}
+/* The scope marker that sits beside a title */
+.clds-badge--label {
+  font-size: var(--clds-text-micro);
+  font-weight: var(--clds-weight-semibold);
+  letter-spacing: 0.05em;
+  padding: var(--clds-space-1) var(--clds-space-4);
+  vertical-align: 2px;
+}

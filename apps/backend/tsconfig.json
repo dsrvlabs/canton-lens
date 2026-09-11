@@ -1,0 +1,6 @@
+{
+  "extends": "../../tsconfig.base.json",
+  // Backend TypeScript is checked here. Its .mjs files are execution sites that use no types.
+  // @canton-lens/core is resolved through the workspace link to packages/core/src (its exports point at .ts).
+  "include": ["src/**/*.ts"]
+}

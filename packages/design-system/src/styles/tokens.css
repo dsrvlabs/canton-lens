@@ -1,0 +1,221 @@
+/* ── Tokens ───────────────────────────────────────────────────────────
+   This file is the design system's only source of values. Component CSS does not reach directly for a
+   colour, shadow or radius that is not here.
+
+   The colours join the Canton brand (the black · lime · sky blue · deep blue read from canton.network)
+   with Etherscan's light/dark neutrals (the values read from --bs-* on etherscan.io). The type ramp is
+   left as it is (half steps 11.5 · 12.5 · 13.5 included) — trimming the ramp is a separate decision.
+
+   The base tokens are dark mode. data-theme="light" redefines colours and shadows only. */
+:root {
+  color-scheme: dark;
+
+  /* ── Dark theme ──────────────────────────────────────────────────────────
+     The window ground and the card carry the same colour, with no panel layer between them. Dark colours
+     are hard to pull far apart in lightness, so a card's outline is made not by a lightness gap but by a
+     **1px border** (--clds-color-line).
+     **There is one key colour: lime.** Lime points at both "you are here" (the current location in the
+     sidebar) and "the thing you press" (buttons · focus rings). Everything else is neutral, a link violet,
+     or a semantic colour (positive · problem). */
+
+  /* Surfaces */
+  --clds-color-canvas: #0e0e0e;
+  /* Card surface — **the same colour as the window ground.** A card stands by its border, not by a fill.
+     It points at canvas instead of writing a value — change the ground colour and the card follows. */
+  --clds-color-surface: var(--clds-color-canvas);
+  --clds-color-subtle: #262626;
+  /* Text on the window ground — the sidebar uses it */
+  --clds-color-canvas-ink: #f5f5f5;
+  --clds-color-canvas-ink-dim: #a3a3a3;
+  --clds-color-canvas-ink-faint: #6f6f6f;
+  /* Field surface — lifted lighter than the window ground to say "a place to write" */
+  --clds-color-field: #1f1f1f;
+
+  /* The search bar's left inset — where the text starts inside the pill. The spacing scale (… 22, 28) has
+     no 24, and fixing the scale would move every other place that uses --clds-space-9/10 along with it.
+     So it is kept as a value belonging to this component. The right side is taken by the round button and
+     is not decided here. */
+  --clds-searchbar-inset: 24px;
+
+  /* Text */
+  --clds-color-ink: #f5f5f5;
+  --clds-color-ink-dim: #a3a3a3;
+  --clds-color-ink-faint: #6f6f6f;
+
+  /* **There are two lines.** With the card surface the same colour as the ground, one line would have to
+     do two jobs at once, and tuned for one it came out wrong for the other.
+     · line  — **the outline of a surface.** It says where a card · section · menu ends. White at 40%, as
+       specified — at 60% it draws at half the strength of body text (7.3:1) and the vessel outran what
+       it holds.
+     · rule  — **a line that has to be read.** It parts the rows of a table, parts a section's head from
+       its body, and becomes the border of the things you operate (inputs · buttons). Faint, it leaves you
+       unable to tell which value belongs to which row, and what can be pressed looks unpressable.
+     Both are white and differ only in alpha (40% / 10%) — lines of the same grain, split by strength
+     alone. An opaque #2a2a2a for rule comes out at 1.34:1 on the dark ground, fainter than line rather
+     than stronger. */
+  --clds-color-line: rgb(255 255 255 / 40%);
+  --clds-color-rule: rgb(255 255 255 / 10%);
+
+  /* Accent — primary buttons · focus rings · the current location. **One key colour, lime**, so what you
+     press and where you are read the same, and everything else is neutral. Links are the one thing held
+     out of it (--clds-color-link below).
+     accent-soft is lime laid down dark — on a dark theme a pale lime used as a background leaves the text
+     on it unreadable. */
+  --clds-color-accent: var(--clds-color-brand);
+  --clds-color-accent-ink: var(--clds-color-brand-ink);
+  --clds-color-accent-soft: #2a2f16;
+  /* Link — violet. Split off from the accent (lime), so only "press and you go somewhere" wears this
+     colour. #ab8cff sits at about 6.5:1 on the dark ground; a deeper violet such as #6d38ff comes out
+     around 3.5:1, too dark for small text. hover does not change the colour, it only underlines — default
+     and hover are the same colour. */
+  --clds-color-link: #ab8cff;
+  --clds-color-link-hover: var(--clds-color-link);
+
+  /* Current location in the sidebar — **a lime pill.** This is where the key colour says "where am I now". */
+  --clds-color-nav-sub-current: var(--clds-color-brand);
+  --clds-color-nav-current: var(--clds-color-brand);
+  --clds-color-nav-current-ink: var(--clds-color-brand-ink);
+  /* hover only covers the colour beneath (never replaces it) — the surface is dark, so a white veil. */
+  --clds-color-nav-hover-veil: rgb(255 255 255 / 7%);
+
+  /* Brand — lime is the key colour. The accent points at this value.
+     brand-2 (sky blue) has no place in use at the moment — only the value is kept. */
+  --clds-color-brand: #f6ffa4;
+  --clds-color-chart-line: var(--clds-color-brand);
+  --clds-color-brand-ink: #0e0e0e;
+  --clds-color-brand-2: #a3cffc;
+
+  /* Band — there is no top band any more, but the design system's Band component remains, so the values
+     are kept. The product does not use them. */
+  --clds-color-band: #0e0e0e;
+  --clds-color-band-2: #0e0e0e;
+  --clds-color-band-ink: #f5f5f5;
+
+  /* Semantic colours — to be readable on a dark surface the text goes light and the chip background dark.
+     They are never used overlapping the accent or the key colour. */
+  --clds-color-positive: #5fd3bd;
+  --clds-color-positive-soft: #14312c;
+  --clds-color-negative: #f28b93;
+  --clds-color-negative-soft: #3a1c20;
+  --clds-color-problem: #f28b93;
+  --clds-color-problem-soft: #3a1c20;
+
+  /* Table row hover — on a dark surface a very pale white veil is laid on (the accent at 4% is invisible). */
+  --clds-color-row-hover: rgb(255 255 255 / 4%);
+
+  /* The shadow for things that float (.clds-menu · .clds-skip). The theme is dark, so black is laid down
+     deep — a light grey shadow floats like fog on a dark surface. */
+  --clds-shadow-card: 0 10px 28px rgb(0 0 0 / 55%);
+
+  /* Radii */
+  --clds-radius-sm: 4px;
+  --clds-radius-md: 7px;
+  --clds-radius-lg: 8px;
+  --clds-radius-xl: 12px;
+  --clds-radius-2xl: 16px; /* cards · sections · side panel — the large surfaces of the body */
+  --clds-radius-pill: 999px;
+
+  /* Spacing ramp — the rhythm between components. The small paddings inside a component (5px · 9px and
+     the like) stay in that component's CSS. A value that is not on the ramp does not pretend to be one. */
+  --clds-space-1: 2px;
+  --clds-space-2: 4px;
+  --clds-space-3: 6px;
+  --clds-space-4: 8px;
+  --clds-space-5: 10px;
+  --clds-space-6: 12px;
+  --clds-space-7: 14px;
+  --clds-space-8: 18px;
+  --clds-space-9: 22px;
+  --clds-space-10: 28px;
+
+  /* Type — Pretendard Variable (fonts.css, self-hosted). Before it arrives, and if it fails, system fonts
+     draw it. Monospace is the system's — for identifiers and numbers tabular-nums beats the face. */
+  --clds-font-sans: "Pretendard Variable", Pretendard, ui-sans-serif, -apple-system, "Apple SD Gothic Neo",
+    sans-serif;
+  --clds-font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* Size ramp — a name is not the size but the **role**. The name says which place the size is used in. */
+  --clds-text-micro: 10.5px; /* uppercase group labels, scope pills */
+  --clds-text-caption: 11px; /* table heads, badges, card labels */
+  --clds-text-fine: 11.5px; /* type notation, raw JSON */
+  --clds-text-small: 12px; /* stamps, footnotes, footers */
+  --clds-text-note: 12.5px; /* filter rows, the band's secondary text */
+  --clds-text-compact: 13px; /* table bodies, menu rows */
+  --clds-text-body: 13.5px; /* nav items, lens buttons */
+  --clds-text-default: 14px; /* body text */
+  --clds-text-heading: 17px; /* section head — 17px bold, no line beneath */
+  --clds-text-lead: 15px; /* the band's one word */
+  --clds-text-amount: 16px; /* the amount on a list card */
+  --clds-text-brand: 21px; /* the product name */
+  --clds-text-metric: 24px; /* the number on a summary card (the older name — split into the two below) */
+  --clds-text-metric-label: 17px; /* a summary card's label — the sentence-case line read first */
+  --clds-text-metric-value: 30px; /* a summary card's number — large, at the bottom */
+
+  --clds-leading: 1.55;
+  --clds-weight-medium: 500;
+  --clds-weight-semibold: 600;
+  --clds-weight-bold: 650;
+  --clds-weight-heavy: 700;
+  --clds-tracking-label: 0.07em; /* uppercase labels */
+  --clds-tracking-tight: 0.04em;
+  --clds-tracking-loose: 0.08em;
+
+  /* Frame — the maximum width of the centred body, the sidebar width, the side gutters.
+     The narrow-screen breakpoint is fixed at 900px (a media query cannot read var — see layout.css). */
+  /* **No width cap**: header and body both use the window's width. Capping one and freeing the other pulls
+     the left and right edges of header and body out of line on a wide screen. The only places that use
+     this token and the gutter below are the header (.clds-band__inner) and the body shell (.clds-shell),
+     so these two values set both of them together. */
+  --clds-layout-max: none;
+  --clds-layout-sidebar: 216px;
+  /* A 40px side gutter — the desktop value. On a narrow screen the breakpoint below takes it back to 28px. */
+  --clds-layout-gutter: 40px;
+  --clds-layout-gap: 22px;
+  /* The window's top padding = where the things that stick come to rest. The shell's padding-top and the
+     sticky top of the sidebar · search row share this one value — out of step, they stop at different
+     heights once stuck. */
+  --clds-shell-top: 22px;
+
+  /* Icon — the down arrow the design gave (down.svg, 12×12). It is used as a mask, so the place that uses
+     it decides the colour. The disclosure marker and the marker on an input with a list (datalist) use the
+     same picture — change one place and both follow. */
+  --clds-icon-caret: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M6.79615 8.64066C6.39077 9.11978 5.60923 9.11978 5.20384 8.64066L1.71824 4.52112C1.19626 3.90421 1.66953 3 2.5144 3H9.4856C10.3305 3 10.8037 3.90421 10.2818 4.52113L6.79615 8.64066Z'/%3E%3C/svg%3E");
+}
+
+:root[data-theme="light"] {
+  --clds-color-chart-line: #869616;
+  --clds-color-nav-sub-current: var(--clds-color-ink);
+  color-scheme: light;
+  --clds-color-canvas: #ffffff;
+  --clds-color-surface: #ffffff;
+  --clds-color-subtle: #f1f2f4;
+  --clds-color-field: #f1f2f4;
+  --clds-color-canvas-ink: #202124;
+  --clds-color-canvas-ink-dim: #555b63;
+  --clds-color-canvas-ink-faint: #656b73;
+  --clds-color-ink: #202124;
+  --clds-color-ink-dim: #555b63;
+  --clds-color-ink-faint: #656b73;
+  --clds-color-line: #c5c9cf;
+  --clds-color-rule: #dfe2e6;
+  --clds-color-accent: #526300;
+  --clds-color-accent-ink: #ffffff;
+  --clds-color-accent-soft: #f1f5d8;
+  --clds-color-link: #6333c5;
+  --clds-color-nav-hover-veil: rgb(0 0 0 / 5%);
+  --clds-color-positive: #13745f;
+  --clds-color-positive-soft: #e4f4ed;
+  --clds-color-negative: #b33143;
+  --clds-color-negative-soft: #fce9ed;
+  --clds-color-problem: #b33143;
+  --clds-color-problem-soft: #fce9ed;
+  --clds-color-row-hover: rgb(0 0 0 / 3%);
+  --clds-shadow-card: 0 10px 28px rgb(0 0 0 / 12%);
+}
+
+/* On a narrow screen the side gutters shrink — 40px is a value that only holds on the desktop. */
+@media (max-width: 900px) {
+  :root {
+    --clds-layout-gutter: 28px;
+  }
+}

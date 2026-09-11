@@ -1,0 +1,46 @@
+{
+  "name": "@canton-lens/design-system",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The design system for Canton Lens. Only tokens (CSS variables) and domain-free primitives live here — it knows nothing of the ledger, lenses or the API. The one runtime dependency is react (peer).",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./styles.css": {
+      "source": "./src/styles/index.css",
+      "default": "./dist/styles.css"
+    },
+    "./tokens.css": {
+      "source": "./src/styles/tokens.css",
+      "default": "./dist/tokens.css"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "sideEffects": [
+    "*.css"
+  ],
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json && node scripts/build-css.mjs",
+    "typecheck": "tsc -p ."
+  },
+  "peerDependencies": {
+    "react": "^19.2.8"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.18",
+    "typescript": "^7.0.2"
+  },
+  "dependencies": {
+    "pretendard": "^1.3.9"
+  }
+}

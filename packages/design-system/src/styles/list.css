@@ -1,0 +1,206 @@
+/* ── Lists ────────────────────────────────────────────────────────────
+   Name-value list (DescriptionList) · navigation (Nav) · dropdown panel (Menu). */
+
+.clds-dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 5px var(--clds-space-8);
+  margin: 0;
+}
+.clds-dl > dt {
+  color: var(--clds-color-ink-dim);
+}
+.clds-dl > dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  /* A grid cell does not shrink below its content's minimum width by default (min-width:auto). With a wide
+     table standing inside, the cell breaks out of the section and the right side is cut off — letting the
+     cell shrink gives the Scroll inside it a horizontal scrollbar. */
+  min-width: 0;
+}
+/* Rows on a detail screen — fixed-width label column, an underline per row. */
+.clds-dl--rows {
+  grid-template-columns: 210px 1fr;
+  gap: 0 var(--clds-space-8);
+}
+.clds-dl--rows > dt,
+.clds-dl--rows > dd {
+  padding: var(--clds-space-5) 0;
+  border-bottom: 1px solid var(--clds-color-rule);
+}
+.clds-dl--rows > dt:last-of-type,
+.clds-dl--rows > dd:last-of-type {
+  border-bottom: 0;
+}
+
+/* Nav — a flat list plus section headers. No bullets, no icons: indentation states the hierarchy. */
+.clds-nav__group {
+  font-size: var(--clds-text-micro);
+  letter-spacing: var(--clds-tracking-loose);
+  text-transform: uppercase;
+  color: var(--clds-color-ink-faint);
+  font-weight: var(--clds-weight-semibold);
+  line-height: 1.4;
+  margin: var(--clds-space-6) var(--clds-space-5) var(--clds-space-3);
+}
+.clds-nav__group:first-child {
+  margin-top: var(--clds-space-2);
+}
+.clds-nav__group--rule {
+  border-top: 1px solid var(--clds-color-rule);
+  padding-top: var(--clds-space-4);
+}
+.clds-nav__item {
+  display: block;
+  padding: 7px var(--clds-space-5);
+  border-radius: var(--clds-radius-lg);
+  color: var(--clds-color-ink);
+  font-size: var(--clds-text-body);
+}
+/* hover **covers, it does not replace.** Changing background-color makes the colour of the current
+   location (lime) disappear when the pointer is on it — a single veil laid on with background-image lets
+   the colour beneath show straight through. */
+a.clds-nav__item:hover {
+  background-image: linear-gradient(
+    var(--clds-color-nav-hover-veil),
+    var(--clds-color-nav-hover-veil)
+  );
+  text-decoration: none;
+}
+.clds-nav__item[aria-current="page"] {
+  /* `background-color`, not the `background` shorthand. The shorthand also sets background-image to none,
+     and this rule and the hover rule have the same specificity (both class-level 2), so order decides the
+     winner — with the shorthand, this later rule erases hover's veil. Setting only the colour leaves the
+     veil on top. */
+  background-color: var(--clds-color-nav-current);
+  color: var(--clds-color-nav-current-ink);
+  font-weight: var(--clds-weight-heavy); /* the selected item is bold */
+}
+/* Sub-items — **a vertical guide line on the left** states the indentation to the eye.
+   Why the line is not drawn as the item's border-left: it would then fall inside the pill (current
+   location · hover) and be cut off by the rounded corners. So the item is indented with margin and the
+   line stands in the middle of that margin as a pseudo-element — the pill starts to the right of the
+   line, and the line passes alongside it. The items touch each other vertically (no margin), so the
+   pieces join up and read as one line. */
+.clds-nav__item--sub {
+  position: relative;
+  margin-left: var(--clds-space-7);
+  font-size: var(--clds-text-compact);
+}
+/* Separate a group's link from the first child hover surface. */
+.clds-nav__item:not(.clds-nav__item--sub) + .clds-nav__item--sub {
+  margin-top: var(--clds-space-3);
+}
+
+.clds-nav__item--sub::before {
+  content: "";
+  position: absolute;
+  /* A 2px line — pulled back by half its width so it stands in the middle of the indent margin (14px). */
+  left: calc(-1 * var(--clds-space-7) / 2 - 1px);
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--clds-color-rule);
+}
+/* **For a sub-item the current location is text colour, not a pill.** When a sub-item comes on, its parent
+   (Tokens · Catalog) comes on with it (PARENTS in Sidebar), and two pills stacked together read as one
+   lump. The parent keeps its pill and the child is tinted lime in its text alone — that difference is what
+   tells which one is the parent and which is the screen being viewed.
+   Its specificity is higher than `.clds-nav__item[aria-current]` (two classes + an attribute), so it
+   overrides the pill rule. */
+.clds-nav__item--sub[aria-current="page"] {
+  background-color: transparent;
+  color: var(--clds-color-nav-sub-current);
+}
+
+/* A destination that does not exist yet — not a link. Faint, not pressable. */
+.clds-nav__item--soon {
+  color: var(--clds-color-ink-faint);
+  cursor: default;
+}
+.clds-nav__item--soon small {
+  font-size: var(--clds-text-micro);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  margin-left: var(--clds-space-3);
+}
+/* Dropdown panel — a card that drops beside the button that opens it. Positioned against .clds-anchor. */
+.clds-anchor {
+  position: relative;
+  display: flex;
+}
+.clds-menu {
+  position: absolute;
+  top: calc(100% + var(--clds-space-3));
+  left: 0;
+  z-index: 20;
+  width: 400px;
+  max-width: 90vw;
+  background: var(--clds-color-surface);
+  color: var(--clds-color-ink);
+  border: 1px solid var(--clds-color-line);
+  border-radius: var(--clds-radius-xl);
+  box-shadow: var(--clds-shadow-card);
+  padding: var(--clds-space-5);
+  text-align: left;
+  font-weight: 400;
+}
+.clds-menu__row {
+  display: flex;
+  align-items: center;
+  gap: var(--clds-space-4);
+  padding: var(--clds-space-3) var(--clds-space-2);
+  font-size: var(--clds-text-compact);
+  cursor: pointer;
+  border-radius: var(--clds-radius-md);
+}
+.clds-menu__row:hover {
+  background: var(--clds-color-subtle);
+}
+.clds-menu__row--strong {
+  font-weight: var(--clds-weight-semibold);
+}
+/* The extra information at the right end of a row */
+.clds-menu__aside {
+  margin-left: auto;
+  color: var(--clds-color-ink-faint);
+  font-size: var(--clds-text-caption);
+  white-space: nowrap;
+}
+.clds-menu__empty {
+  color: var(--clds-color-ink-faint);
+  font-size: var(--clds-text-note);
+  padding: var(--clds-space-3) var(--clds-space-2);
+  margin: 0;
+}
+
+/* ── Tabs ─────────────────────────────────────────────────────────────
+   Different faces of the same subject. Only text laid on a single underline — no icons; the current face
+   is stated by weight and an accent-coloured underline. On a narrow screen they slide sideways instead of
+   wrapping: with tabs on two rows, the distance down to the table below differs from screen to screen. */
+.clds-tabs {
+  display: flex;
+  gap: var(--clds-space-2);
+  border-bottom: 1px solid var(--clds-color-rule);
+  margin-bottom: var(--clds-space-6);
+  overflow-x: auto;
+}
+.clds-tabs__item {
+  padding: var(--clds-space-4) var(--clds-space-5);
+  color: var(--clds-color-ink-dim);
+  font-size: var(--clds-text-body);
+  white-space: nowrap;
+  /* It straddles the underline — the section's line and the tab's line take the same position, so they do
+     not read as two lines. */
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+a.clds-tabs__item:hover {
+  color: var(--clds-color-ink);
+  text-decoration: none;
+}
+.clds-tabs__item[aria-current="page"] {
+  color: var(--clds-color-ink);
+  border-bottom-color: var(--clds-color-accent);
+  font-weight: var(--clds-weight-heavy);
+}

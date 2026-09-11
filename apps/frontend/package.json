@@ -1,0 +1,33 @@
+{
+  "name": "@canton-lens/frontend",
+  "version": "0.0.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "description": "Canton Lens frontend with explicit browser-oidc, shared-identity, and institution-bff authentication profiles.",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "node --test test/*.test.mjs",
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "@canton-lens/design-system": "workspace:^",
+    "oauth4webapi": "^3.8.3",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@canton-lens/backend": "workspace:^",
+    "@canton-lens/core": "workspace:^",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7",
+    "@vitejs/plugin-react": "^6.1.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.2.2"
+  }
+}

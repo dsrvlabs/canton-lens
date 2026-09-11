@@ -1,0 +1,139 @@
+/* ── Frame ────────────────────────────────────────────────────────────
+   There is one narrow-screen breakpoint: 900px. A media query cannot read var(), so this one number is
+   written as a literal in several places instead of a token — to change it, grep this package for `900px`. */
+
+/* Band — the very top of the screen, the only strip whose lightness is the opposite of the body. */
+.clds-band {
+  position: relative;
+  background: linear-gradient(160deg, var(--clds-color-band), var(--clds-color-band-2));
+  color: var(--clds-color-band-ink);
+}
+
+/* Reading — a 2px progress strip along the foot of the band. The end of the read is unknown, so the strip
+   is indeterminate and travels back and forth. */
+.clds-loading {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  overflow: hidden;
+  pointer-events: none;
+}
+.clds-loading::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 40%;
+  background: var(--clds-color-brand);
+  animation: clds-loading 1.1s ease-in-out infinite;
+}
+@keyframes clds-loading {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(250%);
+  }
+}
+.clds-band__inner {
+  max-width: var(--clds-layout-max);
+  margin: 0 auto;
+  padding: var(--clds-space-7) var(--clds-layout-gutter) 20px;
+}
+
+/* Shell — sidebar + body below the band. The sidebar is not a pillar outside the page but a panel inside
+   the content. */
+.clds-shell {
+  max-width: var(--clds-layout-max);
+  margin: 0 auto;
+  /* Top padding — keeps the content panel off the top of the window so the dark ground shows above it too.
+     The sticky search row has to know this value, so it is kept as a token. */
+  padding: var(--clds-shell-top) var(--clds-layout-gutter) 56px;
+  display: grid;
+  grid-template-columns: var(--clds-layout-sidebar) minmax(0, 1fr);
+  gap: var(--clds-layout-gap);
+  align-items: start;
+}
+/* Content column — a vessel, nothing more. What gets bound into a panel is the consumer's call (the product
+   binds only what is below the search row, and leaves the search row outside that panel). */
+.clds-shell__main {
+  min-width: 0;
+}
+
+/* Side panel — the vessel for the sidebar. What stands inside it is the consumer's call. */
+.clds-side {
+  /* No background — it sits straight on the dark window ground (#111). A white panel here would make two
+     panels of the same rank as the content panel, blurring which one is the content. */
+  background: transparent;
+  color: var(--clds-color-canvas-ink);
+  /* No border and no radius — the sidebar is not a panel but a list on the window ground.
+     Cards have a border, this does not: with that line it reads as "a box of the same rank as the cards
+     on the right", and the sidebar is not content but the place you move from. */
+  /* No shadow — the lightness gap between ground (#f3f3f6) and surface (#fff) plus the 1px line is enough.
+     Lifting is the business of what floats above and covers something (.clds-menu · .clds-skip). */
+  /* No side padding — it is not a panel, so it has no inner padding. An item's left edge stands right on
+     the shell's side gutter (--clds-layout-gutter, 40px on desktop). Only top and bottom get a little air.
+     The 18px on top equals the margin-top of the first card in the body (--clds-space-8 on .clds-card-grid ·
+     .clds-section) — the top edge of the first item (a pill) lines up with the first card on the right. */
+  padding: var(--clds-space-8) 0 var(--clds-space-5);
+  position: sticky;
+  /* Where it sticks. If a header stands above, the consumer pushes it down by that height
+     (--clds-sticky-top). Otherwise it sticks at the shell's top padding. */
+  top: var(--clds-sticky-top, var(--clds-shell-top));
+  /* **If it grows taller than the window, it scrolls inside itself.** A sticky element does not move with
+     the page while it is stuck, so whatever spills outside the window can never be reached, however far
+     the page is scrolled — at a window height of 620px the last item ("API") disappeared that way.
+     The height is "the window left below the sticking point" minus the bottom padding. */
+  max-height: calc(100vh - var(--clds-sticky-top, var(--clds-shell-top)) - var(--clds-shell-top));
+  overflow-y: auto;
+}
+
+@media (max-width: 900px) {
+  .clds-shell {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+  /* It does not stick — on a narrow screen the list of destinations opens and closes as a menu in the
+     header (the product decides that). The list stays vertical: laid on its side, sub-items looked the
+     same rank as their parent. Nothing sticks, so the height cap is lifted too — it scrolls with the page,
+     so there is nothing to cut off. */
+  .clds-side {
+    position: static;
+    max-height: none;
+    overflow-y: visible;
+  }
+}
+
+/* Two columns — the ratio is changed through --clds-columns-left / --clds-columns-right. */
+.clds-columns {
+  display: grid;
+  grid-template-columns:
+    minmax(0, var(--clds-columns-left, 1fr))
+    minmax(0, var(--clds-columns-right, 1fr));
+  gap: var(--clds-space-8);
+  align-items: start;
+}
+@media (max-width: 900px) {
+  .clds-columns {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+}
+
+/* Whatever spills sideways (tables · code) scrolls within its own slot — so the document is not pushed
+   left and right. */
+.clds-scroll {
+  overflow-x: auto;
+}
+pre.clds-scroll {
+  white-space: pre-wrap;
+  margin: 0;
+}
+
+/* Columns folded away on a narrow screen — developer columns (offset and the like) take this. */
+@media (max-width: 900px) {
+  .clds-hide-narrow {
+    display: none;
+  }
+}

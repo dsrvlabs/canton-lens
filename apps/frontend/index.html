@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Canton Lens</title>
+<link rel="icon" type="image/png" href="./assets/canton-lens-mark.png">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#0e0e0e">
+<script>
+  // Apply the saved theme before the first paint. Storage may be disabled.
+  try {
+    if (localStorage.getItem("canton-lens-theme") === "light") {
+      document.documentElement.dataset.theme = "light";
+      document.querySelector('meta[name="theme-color"]').content = "#ffffff";
+    }
+  } catch {}
+</script>
+<!--
+  The Vite entry point. The screens live in src/ and this file only gives the mount point.
+  **No font CDN.** Firing a request outside every time a screen onto a private ledger opens would leave a
+  record of the access — the typeface (Pretendard) is self-hosted in the design system's bundle.
+-->
+</head>
+<body>
+<div id="root"></div>
+<script type="module" src="./src/main.tsx"></script>
+</body>
+</html>

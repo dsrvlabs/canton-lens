@@ -1,0 +1,6 @@
+/* Typeface — Pretendard Variable (OFL). Self-hosted from the npm bundle — no external CDN request.
+   The rule holds: firing a request at a font CDN every time a screen onto a private ledger opens would
+   leave a record of that access outside.
+   Dynamic subset: 92 slices by unicode range, so the browser takes only the slices the screen actually
+   uses (Latin + whichever Hangul ranges appear). */
+@import "pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css";

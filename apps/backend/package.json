@@ -1,0 +1,36 @@
+{
+  "name": "@canton-lens/backend",
+  "version": "0.0.0",
+  "type": "module",
+  "private": true,
+  "license": "Apache-2.0",
+  "description": "Backend-only HTTP API. Route semantics are decided by src/router.ts; this package never serves frontend assets.",
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "exports": {
+    "./build-app": {
+      "types": "./src/live/build-app.d.mts",
+      "default": "./src/live/build-app.mjs"
+    }
+  },
+  "scripts": {
+    "dev": "node --env-file=.env src/live/serve.mjs",
+    "start": "node --env-file=.env src/live/serve.mjs",
+    "test": "node --test \"src/**/*.test.ts\"",
+    "typecheck": "tsc -p .",
+    "openapi:generate": "node scripts/generate-openapi-schemas.mjs",
+    "openapi:check": "node scripts/generate-openapi-schemas.mjs --check"
+  },
+  "dependencies": {
+    "@canton-lens/core": "workspace:^",
+    "fastify": "^5.12.3",
+    "oauth4webapi": "^3.8.3"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "ajv": "^8.20.0",
+    "ts-json-schema-generator": "^2.9.0",
+    "typescript": "^7.0.2"
+  }
+}

@@ -1,0 +1,66 @@
+/* ── Tables ───────────────────────────────────────────────────────────
+   Element selectors are used, but picked only inside .clds-table — the consumer's other tables are left
+   alone. So row and cell markup stays plain <tr>/<th>/<td>. */
+
+.clds-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: var(--clds-text-compact);
+}
+/* Table head — lowercase, colour near the body text, as on Etherscan. Uppercase labels are left to cards. */
+.clds-table th {
+  text-align: left;
+  font-size: var(--clds-text-note);
+  white-space: nowrap;
+  color: var(--clds-color-ink-dim);
+  font-weight: var(--clds-weight-semibold);
+  padding: var(--clds-space-5) var(--clds-space-8) 7px;
+  border-bottom: 1px solid var(--clds-color-rule);
+}
+.clds-table td {
+  text-align: left;
+  padding: 9px var(--clds-space-8);
+  border-bottom: 1px solid var(--clds-color-rule);
+  vertical-align: top;
+}
+.clds-table tr:last-child td {
+  border-bottom: 0;
+}
+.clds-table tr:hover td {
+  background: var(--clds-color-row-hover);
+}
+
+/* A table whose whole row is a link — press anywhere and it goes to that row's detail. The focus ring is
+   drawn inside the row, so it does not overlap the table border. */
+.clds-rowlink {
+  cursor: pointer;
+}
+.clds-rowlink:focus-visible {
+  outline-offset: -2px;
+}
+
+/* Group head row — where the name of the enclosing group stands inside the table. */
+.clds-table tr.clds-grouphead td {
+  background: var(--clds-color-subtle);
+  padding-top: 7px;
+  padding-bottom: 7px;
+}
+
+/* Field table — name · type · value. Name and type stay on one line, the value takes the rest. It never
+   grows wider than its own cell (a nested record stands inside it again). */
+.clds-table--fields {
+  width: auto;
+  max-width: 100%;
+}
+.clds-table--fields td {
+  padding: 5px var(--clds-space-6) 5px 0;
+  border-bottom: 1px dotted var(--clds-color-rule);
+}
+.clds-table--loose td {
+  padding: var(--clds-space-3) var(--clds-space-7) var(--clds-space-3) 0;
+}
+
+/* A cell stating a circumstance instead of a value — the banner's padding and ground fill the whole cell. */
+.clds-table td.clds-banner {
+  padding: var(--clds-space-5) var(--clds-space-7);
+}
