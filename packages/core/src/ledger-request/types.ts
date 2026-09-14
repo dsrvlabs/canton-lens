@@ -27,6 +27,13 @@ export type LedgerSend = (request: LedgerRequest) => Promise<{ status: number; b
 //                     Both arrive as an error name (JsCantonError.code), not as a status code.
 //   pruned:           asked for a past the participant has already pruned — when the error body's code contains PRUNED
 //                     (the Canton PARTICIPANT_PRUNED_DATA_ACCESSED family). Different from “does not exist”: it existed but is not retained.
+//   too_many_elements: the list is larger than this path will serve. It arrives as an error name
+//                     (JSON_API_MAXIMUM_LIST_ELEMENTS_NUMBER_REACHED) when the node's JSON API refuses to put more than
+//                     `http-list-max-elements-limit` elements in one response, and it is also the name this layer gives
+//                     its own bound when a paged list does not end within LEDGER_MAX_ELEMENTS / LEDGER_MAX_PAGES.
+//                     Neither is the caller's fault and no request the caller can make avoids it — the remedy is the
+//                     node's list limit, which is the operator's. Distinct from node_error so that the operator is told
+//                     which limit, rather than “the node refused”.
 export type LedgerFailureReason =
   | "unauthenticated"
   | "forbidden"
@@ -34,7 +41,8 @@ export type LedgerFailureReason =
   | "node_error"
   | "unreachable"
   | "offset_after_ledger_end"
-  | "pruned";
+  | "pruned"
+  | "too_many_elements";
 
 export type LedgerCallOk<T> = { ok: true; value: T };
 

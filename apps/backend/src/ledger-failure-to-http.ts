@@ -27,6 +27,15 @@ export function ledgerFailureToHttp(reason: LedgerFailureReason): {
     case "pruned":
       // It existed but is no longer retained — 410 Gone.
       return { status: 410, body: { reason } };
+    case "too_many_elements":
+      // **502, and deliberately the same status as node_error.** Nothing the caller sends changes the
+      // outcome — the request was well-formed and no parameter of it makes the list smaller — so it is not a
+      // 4xx. It is not this server failing either: the participant answered correctly, and correctly refused.
+      // What is left is the gateway class: a read this server cannot complete because of what lies upstream.
+      // The part an operator can act on is the **name**, not the status — raise the participant's
+      // `http-list-max-elements-limit` — which is why it does not stay lumped in with node_error's
+      // “the node refused”.
+      return { status: 502, body: { reason } };
     default: {
       const exhaustive: never = reason;
       throw new Error(`unhandled ledger failure reason: ${String(exhaustive)}`);

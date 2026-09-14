@@ -97,10 +97,27 @@ const ledgerFailureResponses = {
     ["forbidden"],
   ),
   "502": failure(
-    "node_error — the participant answered with an error, or the response shape differs from what this layer knows.",
-    ["node_error"],
+    "node_error — the participant answered with an error, or the response shape differs from what this layer knows. " +
+      "too_many_elements — the list is larger than this path will serve: the participant's JSON API refuses to " +
+      "return more than `http-list-max-elements-limit` elements in one response. No parameter of the request " +
+      "changes this; the remedy is that limit on the node.",
+    ["node_error", "too_many_elements"],
   ),
   "504": failure("unreachable — the participant could not be reached.", ["unreachable"]),
+};
+
+// Routes that query the ledger with the viewer's party filter. A ledger user with neither CanReadAs nor
+// CanActAs has no filter to send, so these routes answer before the participant is asked. One status code
+// carries one response object, so the shared 403 is restated here with both reasons rather than added
+// beside it. /api/session and /api/home are not in this set: they report the zero-party viewer inside a 200.
+const partyScopedFailureResponses = {
+  ...ledgerFailureResponses,
+  "403": failure(
+    "forbidden — the participant answered that the token has no right to make this query. " +
+      "no_party_rights — the viewer's ledger user holds no CanReadAs or CanActAs right, so this route " +
+      "has no party filter to query with and the participant is not asked.",
+    ["forbidden", "no_party_rights"],
+  ),
 };
 
 const offsetParameter = {
@@ -214,7 +231,7 @@ export const openApiDocument = {
             ["invalid_offset", "offset_after_ledger_end", "invalid_page_size", "invalid_cursor"],
           ),
           "401": unauthenticatedResponse,
-          ...ledgerFailureResponses,
+          ...partyScopedFailureResponses,
         },
       },
     },
@@ -279,7 +296,7 @@ export const openApiDocument = {
             ["invalid_offset", "offset_after_ledger_end", "invalid_before", "invalid_limit"],
           ),
           "401": unauthenticatedResponse,
-          ...ledgerFailureResponses,
+          ...partyScopedFailureResponses,
         },
       },
     },
@@ -333,7 +350,7 @@ export const openApiDocument = {
             ["invalid_offset", "offset_after_ledger_end", "invalid_window", "window_too_wide"],
           ),
           "401": unauthenticatedResponse,
-          ...ledgerFailureResponses,
+          ...partyScopedFailureResponses,
         },
       },
     },
@@ -439,7 +456,7 @@ export const openApiDocument = {
           ]),
           "410": failure("pruned — history the participant has already pruned.", ["pruned"]),
           "401": unauthenticatedResponse,
-          ...ledgerFailureResponses,
+          ...partyScopedFailureResponses,
         },
       },
     },
@@ -468,7 +485,7 @@ export const openApiDocument = {
           "404": failure("not_found", ["not_found"]),
           "410": failure("pruned", ["pruned"]),
           "401": unauthenticatedResponse,
-          ...ledgerFailureResponses,
+          ...partyScopedFailureResponses,
         },
       },
     },
@@ -538,7 +555,7 @@ export const openApiDocument = {
             ["not_found"],
           ),
           "401": unauthenticatedResponse,
-          ...ledgerFailureResponses,
+          ...partyScopedFailureResponses,
         },
       },
     },
@@ -571,7 +588,7 @@ export const openApiDocument = {
             "offset_after_ledger_end",
           ]),
           "401": unauthenticatedResponse,
-          ...ledgerFailureResponses,
+          ...partyScopedFailureResponses,
         },
       },
     },
@@ -606,7 +623,7 @@ export const openApiDocument = {
             ["not_found"],
           ),
           "401": unauthenticatedResponse,
-          ...ledgerFailureResponses,
+          ...partyScopedFailureResponses,
         },
       },
     },
@@ -654,7 +671,7 @@ export const openApiDocument = {
             ["not_found"],
           ),
           "401": unauthenticatedResponse,
-          ...ledgerFailureResponses,
+          ...partyScopedFailureResponses,
         },
       },
     },
@@ -674,7 +691,7 @@ export const openApiDocument = {
             "offset_after_ledger_end",
           ]),
           "401": unauthenticatedResponse,
-          ...ledgerFailureResponses,
+          ...partyScopedFailureResponses,
         },
       },
     },
@@ -696,7 +713,7 @@ export const openApiDocument = {
             "offset_after_ledger_end",
           ]),
           "401": unauthenticatedResponse,
-          ...ledgerFailureResponses,
+          ...partyScopedFailureResponses,
         },
       },
     },
@@ -772,7 +789,7 @@ export const openApiDocument = {
             "offset_after_ledger_end",
           ]),
           "401": unauthenticatedResponse,
-          ...ledgerFailureResponses,
+          ...partyScopedFailureResponses,
         },
       },
     },
@@ -801,7 +818,7 @@ export const openApiDocument = {
             ["invalid_path", "invalid_offset", "offset_after_ledger_end"],
           ),
           "401": unauthenticatedResponse,
-          ...ledgerFailureResponses,
+          ...partyScopedFailureResponses,
         },
       },
     },

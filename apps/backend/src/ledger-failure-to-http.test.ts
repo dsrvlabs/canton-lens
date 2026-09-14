@@ -35,6 +35,16 @@ test("offset_after_ledger_end is 400 — a point that has not arrived yet is som
   });
 });
 
+test("too_many_elements is 502 — the caller can do nothing about it, the operator can", () => {
+  // The same status as node_error on purpose: no request the caller can send makes the list shorter, and the
+  // participant did not fail — it refused, correctly. What distinguishes the two is the name in the body,
+  // which is the part that points at the node's `http-list-max-elements-limit`.
+  assert.deepEqual(ledgerFailureToHttp("too_many_elements"), {
+    status: 502,
+    body: { reason: "too_many_elements" },
+  });
+});
+
 test("pruned is 410 Gone — “it existed but is not retained” differs from “it does not exist” (404)", () => {
   assert.deepEqual(ledgerFailureToHttp("pruned"), {
     status: 410,

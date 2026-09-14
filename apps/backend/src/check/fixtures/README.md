@@ -9,11 +9,11 @@ CI has no Canton node. So `run-check.test.ts` stands these files up in the ledge
 
 | | |
 |---|---|
-| Recorded at | 2026-09-06T17:49:52.836Z |
+| Recorded at | 2026-09-14T11:28:07.289Z |
 | Ledger | `http://localhost:7575` (a local participant) |
-| Canton version | 3.4.8 |
+| Canton version | 3.5.15 |
 | People | alice · bob · carol |
-| Addresses asked | 51 (everything the check actually asks) |
+| Addresses asked | 54 (everything the check actually asks) |
 
 **Recorded with user tokens.** Recorded with an admin token, the files would hold everything rather than the
 boundary Canton enforces, and then they would be material unrelated to the statement this product exists to
@@ -26,7 +26,7 @@ credential-shaped content.
 
 | | |
 |---|---|
-| `ledger.jsonl` | 129 ledger questions and their answers. One pair per line |
+| `ledger.jsonl` | 141 ledger questions and their answers. One pair per line |
 | `packages/*.bin` | The raw bytes of 32 packages (358 KB) — the input to blueprint reading |
 | `meta.json` | What the test reads — the instant recorded, the people, the Canton version |
 

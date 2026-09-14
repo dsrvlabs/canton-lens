@@ -8,8 +8,8 @@ import type { LedgerCallResult } from "./types.ts";
 // is grouped as node_error — **and that is correct.** The shape of caller-supplied values is already validated
 // by the router, which cuts them off with a 400 (negative offsets, malformed path segments), so if the ledger
 // still answers 400 after that, **this layer built a malformed request**. That is a server fault, and a 5xx is
-// the honest answer. The exceptions are the two that arrive by name (PRUNED · OFFSET_AFTER_LEDGER_END),
-// separated out below.
+// the honest answer. The exceptions are the ones that arrive by name (PRUNED · OFFSET_AFTER_LEDGER_END ·
+// UPDATE_NOT_FOUND · JSON_API_MAXIMUM_LIST_ELEMENTS_NUMBER_REACHED), separated out below.
 //
 // detail carries only a fixed summary string derived from the status code. The raw server response (body)
 // is never put into detail — no real 401/403/404/5xx error body has been captured,
@@ -70,6 +70,27 @@ export function interpretLedgerResponse<T>(status: number, body: unknown): Ledge
       ok: false,
       reason: "not_found",
       detail: `ledger responded ${status} with an UPDATE_NOT_FOUND error code`,
+    };
+  }
+  // **The list is larger than the node will put in one response.** Canton's JSON API caps a list response at
+  // `http-list-max-elements-limit` (default 200) and answers over that with
+  // `413 JSON_API_MAXIMUM_LIST_ELEMENTS_NUMBER_REACHED` ("The number of matching elements (201) is greater than
+  // the node limit (200)."). The status is not among the ones mapped above, so it fell into node_error and an
+  // operator was told the node refused, when nothing was broken. Recognized by name, like PRUNED ·
+  // OFFSET_AFTER_LEDGER_END · UPDATE_NOT_FOUND, because the name is the only part that says which limit.
+  //
+  // **Exact name match only**, for the reason written above UPDATE_NOT_FOUND: matching by substring would
+  // pull in any future name that merely contains this one.
+  if (
+    typeof body === "object" &&
+    body !== null &&
+    typeof (body as { code?: unknown }).code === "string" &&
+    (body as { code: string }).code === "JSON_API_MAXIMUM_LIST_ELEMENTS_NUMBER_REACHED"
+  ) {
+    return {
+      ok: false,
+      reason: "too_many_elements",
+      detail: `ledger responded ${status} with a JSON_API_MAXIMUM_LIST_ELEMENTS_NUMBER_REACHED error code`,
     };
   }
   if (status === 401) {

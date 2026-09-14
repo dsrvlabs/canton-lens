@@ -217,9 +217,22 @@ function decodePathSegment(raw: string): { ok: true; value: string } | { ok: fal
   }
 }
 
-async function resolveViewer(
-  send: LedgerSend,
-): Promise<{ ok: true; parties: string[] } | { ok: false; http: RouterResponse }> {
+// The viewer's party set, or the reason it cannot be used. The `no_party_rights` case carries no
+// `parties` field on purpose — a caller cannot reach the ledger with an empty filter by accident; it has
+// to answer that case first.
+type ResolvedViewer =
+  | { ok: true; kind: "parties"; parties: string[] }
+  | { ok: true; kind: "no_party_rights" }
+  | { ok: false; http: RouterResponse };
+
+// A ledger user with neither CanReadAs nor CanActAs has no party filter to query with. Sending the empty
+// filter anyway makes the participant reject the request, and this layer reads that rejection as
+// node_error (502) — a healthy node reported as broken. The circumstance is the viewer's rights, not the
+// node's state, so it is answered here, under the name core already gives it (buildHomeSummary's
+// cards.status).
+const noPartyRights = (): RouterResponse => ({ status: 403, body: { reason: "no_party_rights" } });
+
+async function resolveViewer(send: LedgerSend): Promise<ResolvedViewer> {
   const userResult: LedgerCallResult<unknown> = await callGetAuthenticatedUser(send);
   if (!userResult.ok) {
     return { ok: false, http: ledgerFailureToHttp(userResult.reason) };
@@ -238,7 +251,10 @@ async function resolveViewer(
     // so it is mapped to 502 (treated as a data problem on the ledger side).
     return { ok: false, http: { status: 502, body: { reason: "node_error" } } };
   }
-  return { ok: true, parties: view.parties.map((p) => p.party) };
+  const parties = view.parties.map((p) => p.party);
+  return parties.length === 0
+    ? { ok: true, kind: "no_party_rights" }
+    : { ok: true, kind: "parties", parties };
 }
 
 async function resolveOffset(
@@ -516,6 +532,9 @@ export async function routeRequest(
     if (!viewer.ok) {
       return viewer.http;
     }
+    if (viewer.kind === "no_party_rights") {
+      return noPartyRights();
+    }
     const offsetResult = await resolveOffset(send, req.query);
     if (!offsetResult.ok) {
       return offsetResult.http;
@@ -764,6 +783,9 @@ export async function routeRequest(
     if (!viewer.ok) {
       return viewer.http;
     }
+    if (viewer.kind === "no_party_rights") {
+      return noPartyRights();
+    }
     const acsResult: LedgerCallResult<unknown> = await callGetActiveContracts(
       send,
       viewer.parties,
@@ -829,6 +851,9 @@ export async function routeRequest(
     const viewer = await resolveViewer(send);
     if (!viewer.ok) {
       return viewer.http;
+    }
+    if (viewer.kind === "no_party_rights") {
+      return noPartyRights();
     }
     const offsetResult = await resolveOffset(send, req.query);
     if (!offsetResult.ok) {
@@ -916,6 +941,9 @@ export async function routeRequest(
     const viewer = await resolveViewer(send);
     if (!viewer.ok) {
       return viewer.http;
+    }
+    if (viewer.kind === "no_party_rights") {
+      return noPartyRights();
     }
     const offsetResult = await resolveOffset(send, req.query);
     if (!offsetResult.ok) {
@@ -1039,6 +1067,9 @@ export async function routeRequest(
     if (!viewer.ok) {
       return viewer.http;
     }
+    if (viewer.kind === "no_party_rights") {
+      return noPartyRights();
+    }
     const lookup: LedgerCallResult<unknown> = updateByOffsetMatch
       ? await callGetUpdateByOffset(
           send,
@@ -1113,6 +1144,9 @@ export async function routeRequest(
     if (!viewer.ok) {
       return viewer.http;
     }
+    if (viewer.kind === "no_party_rights") {
+      return noPartyRights();
+    }
     const offsetResult = await resolveOffset(send, req.query);
     if (!offsetResult.ok) {
       return offsetResult.http;
@@ -1168,6 +1202,9 @@ export async function routeRequest(
     if (!viewer.ok) {
       return viewer.http;
     }
+    if (viewer.kind === "no_party_rights") {
+      return noPartyRights();
+    }
     const offsetResult = await resolveOffset(send, req.query);
     if (!offsetResult.ok) {
       return offsetResult.http;
@@ -1197,6 +1234,9 @@ export async function routeRequest(
     const viewer = await resolveViewer(send);
     if (!viewer.ok) {
       return viewer.http;
+    }
+    if (viewer.kind === "no_party_rights") {
+      return noPartyRights();
     }
     const offsetResult = await resolveOffset(send, req.query);
     if (!offsetResult.ok) {
@@ -1253,6 +1293,9 @@ export async function routeRequest(
     const viewer = await resolveViewer(send);
     if (!viewer.ok) {
       return viewer.http;
+    }
+    if (viewer.kind === "no_party_rights") {
+      return noPartyRights();
     }
     const offsetResult = await resolveOffset(send, req.query);
     if (!offsetResult.ok) {
@@ -1366,6 +1409,9 @@ export async function routeRequest(
     if (!viewer.ok) {
       return viewer.http;
     }
+    if (viewer.kind === "no_party_rights") {
+      return noPartyRights();
+    }
     const acsResult: LedgerCallResult<unknown> = await callGetActiveContracts(
       send,
       viewer.parties,
@@ -1396,6 +1442,9 @@ export async function routeRequest(
   const viewer = await resolveViewer(send);
   if (!viewer.ok) {
     return viewer.http;
+  }
+  if (viewer.kind === "no_party_rights") {
+    return noPartyRights();
   }
   const acsResult: LedgerCallResult<unknown> = await callGetActiveContracts(
     send,

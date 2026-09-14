@@ -24,6 +24,7 @@ import { routeRequest } from "../router.ts";
 import { openApiDocument as bundledOpenApiDocument, sharedIdentityOpenApi } from "../openapi.ts";
 import { ServiceTokenProvider, SHARED_IDENTITY_UNAVAILABLE } from "../auth/service-token.ts";
 import { serviceRequest } from "../auth/service-request.ts";
+import { logLedgerFailures } from "../ledger-failure-log.ts";
 
 const JSON_HEADERS = { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" };
 const json = (status, body) => ({ status, headers: JSON_HEADERS, body: JSON.stringify(body) });
@@ -53,6 +54,7 @@ export function buildApp({
   basePath = "",
   publicEntryUrl,
   openApiDocument = bundledOpenApiDocument,
+  log,
 } = {}) {
   if (typeof send !== "function") {
     throw new TypeError("buildApp: send is missing — it is the sole path out to the ledger.");
@@ -60,6 +62,9 @@ export function buildApp({
   if (ledgerAuth?.mode !== "caller-bearer" && ledgerAuth?.mode !== "shared-identity") {
     throw new TypeError("buildApp: explicit ledgerAuth mode is required");
   }
+  // Wrapped closest to the wire, under the credential wrappers, so a failing call is named with the ledger
+  // path it was sent to. The line goes to the operator's log only; the HTTP response is not touched.
+  const ledgerSend = logLedgerFailures(send, log);
   const service = ledgerAuth.mode === "shared-identity"
     ? new ServiceTokenProvider(ledgerAuth, serviceTokenOptions)
     : null;
@@ -89,7 +94,7 @@ export function buildApp({
         if (service && authorization !== undefined) {
           return json(409, { reason: "shared_identity_authorization_not_allowed" });
         }
-        const serviceCall = service ? serviceRequest(service, send) : null;
+        const serviceCall = service ? serviceRequest(service, ledgerSend) : null;
         // In caller mode, pass the credential through for this request only. In service mode the
         // transport owns the credential; the empty non-null marker admits routing without exposing
         // a service token (or its decoded claims) to the router and /api/session.
@@ -101,7 +106,7 @@ export function buildApp({
             query: Object.fromEntries(new URLSearchParams(search)),
             ledgerToken: service ? "" : authorization?.startsWith("Bearer ") ? authorization.slice(7) : null,
           },
-          { send: serviceCall?.send ?? send },
+          { send: serviceCall?.send ?? ledgerSend },
         );
         const failure = serviceCall?.failure();
         if (failure) return json(failure.status, failure.body);
