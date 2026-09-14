@@ -33,6 +33,30 @@ test("an unauthenticated response does not invent an entry URL", async (t) => {
   assert.deepEqual(response.json(), { reason: "unauthenticated" });
 });
 
+test("a ledger failure is written to the log, and the response body still says only the reason", async (t) => {
+  const lines: string[] = [];
+  const app = buildApp({
+    // The participant rejects the request. Which call it was and what it answered leaves the process
+    // only through the log; the caller is told node_error and nothing else.
+    send: async () => ({ status: 400, body: { cause: "a body the caller must not receive" } }),
+    ledgerAuth: { mode: "caller-bearer" },
+    log: (line) => lines.push(line),
+  });
+  t.after(() => app.close());
+
+  const response = await app.inject({
+    method: "GET",
+    url: "/api/contracts",
+    headers: { authorization: "Bearer a-real-token" },
+  });
+
+  assert.equal(response.statusCode, 502);
+  assert.deepEqual(response.json(), { reason: "node_error" });
+  assert.deepEqual(lines, [
+    "[explorer-api] ledger GET /v2/state/ledger-end — node_error (ledger responded 400)",
+  ]);
+});
+
 test("the API server never serves frontend files", async (t) => {
   const app = buildApp({ send, ledgerAuth: { mode: "caller-bearer" } });
   t.after(() => app.close());

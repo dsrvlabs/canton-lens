@@ -20,4 +20,6 @@ export function buildApp(options: {
   /** Optional public service entry shown when an unauthenticated browser reaches this internal server. */
   publicEntryUrl?: string;
   openApiDocument?: typeof openApiDocument;
+  /** Where ledger failure lines go. Defaults to stderr; a test seam, not a request logger. */
+  log?: (line: string) => void;
 }): FastifyInstance;

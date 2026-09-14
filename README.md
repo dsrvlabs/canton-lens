@@ -4,7 +4,7 @@
   <a href="LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-blue.svg"></a>
   <img alt="Node 22.18+" src="https://img.shields.io/badge/node-22.18%2B-brightgreen.svg">
   <img alt="pnpm 9" src="https://img.shields.io/badge/pnpm-9-f69220.svg">
-  <img alt="Canton 3.4" src="https://img.shields.io/badge/Canton-3.4-4b3fd6.svg">
+  <img alt="Canton 3.5" src="https://img.shields.io/badge/Canton-3.5-4b3fd6.svg">
 </p>
 
 <p align="center">A private explorer for Canton participant ledgers, scoped to the selected Canton identity's permissions.</p>

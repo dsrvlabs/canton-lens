@@ -8,9 +8,13 @@ export const SAID: Record<string, string> = {
     "The gateway forwarded an authentication header that Explorer cannot accept in Shared Identity Mode. Contact your operator.",
   unauthenticated: "No token, or it has expired",
   forbidden: "Outside this user's rights",
+  no_party_rights:
+    "This account has no party rights on this participant, so there is nothing to show",
   not_found:
     "No such thing — or it is outside what you can see. Archived contracts are not in this view",
   node_error: "The node refused",
+  too_many_elements:
+    "This list is larger than the node will return in one response. Ask your operator to raise the participant's JSON API list limit",
   unreachable: "Could not reach the node",
   exchange_failed: "Could not exchange the login token for a ledger token",
   explorer_unreachable: "The front could not reach the Explorer — is it running?",

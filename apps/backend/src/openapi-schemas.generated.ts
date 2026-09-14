@@ -801,6 +801,7 @@ export const responseSchemas = {
       "unreachable",
       "offset_after_ledger_end",
       "pruned",
+      "too_many_elements",
     ],
   },
   LfField: {
