@@ -99,6 +99,21 @@ should forward `/openapi.json` without acquiring a user token. A missing session
 Serve the Frontend and BFF through one browser origin. In development,
 `BACKEND_PROXY_TARGET` points to the institution front rather than directly to the Backend.
 
+## Link previews
+
+Set `VITE_PUBLIC_URL` in `apps/frontend/.env` (or `docker/.env` for Compose) to the
+public app directory before building, for example `https://explorer.example/` or
+`https://example.com/explorer/`. The frontend emits Open Graph and X card metadata
+directly into its HTML, with absolute image and canonical URLs based on this value.
+Rebuild after changing it. When omitted, the image path is relative for local preview
+and no canonical URL is emitted.
+
+The bundled `og-image.png` contains only the product name, logo, and description.
+It is served as a static file alongside `index.html`. Sharing services must be able
+to fetch both files to display the preview; keep existing access controls on ledger APIs.
+All hash routes share the same product preview. The metadata follows the
+[Open Graph protocol](https://ogp.me/).
+
 ## Preview the build locally
 
 Build the Frontend:
