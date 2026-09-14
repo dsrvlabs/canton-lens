@@ -22,7 +22,9 @@ identity.
 
 The access token stays in Browser memory and is not retained by the Backend. Reloading requires
 another login. Memory-only storage does not protect against XSS; use HTTPS, a Content Security
-Policy, and avoid logging tokens.
+Policy, and avoid logging tokens. The Docker image sends one (`docker/security-headers.conf`, the
+policy in `docker/nginx.conf.template`); a deployment serving the bundle from its own host should
+send the same headers.
 
 ## Shared Identity
 

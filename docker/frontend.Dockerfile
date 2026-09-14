@@ -53,5 +53,14 @@ RUN pnpm --filter @canton-lens/frontend build
 # forwards the Backend-owned routes, which is the job Vite performs during development.
 FROM nginx:1.29-alpine
 
-COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
+# The server configuration is a template: the image's entrypoint runs envsubst over
+# /etc/nginx/templates and writes /etc/nginx/conf.d/default.conf at start. The filter restricts
+# substitution to CSP_* names, so nginx's own $host, $uri and $csp in the template are left alone.
+ENV NGINX_ENVSUBST_FILTER=^CSP_
+# Sourced by the entrypoint before envsubst runs (the `.envsh` suffix means sourced, not executed,
+# but the entrypoint still skips a file that is not executable, hence --chmod):
+# derives CSP_CONNECT_SRC from VITE_OIDC_ISSUER, which compose.yaml passes to this container.
+COPY --chmod=755 docker/csp-connect-src.envsh /docker-entrypoint.d/15-csp-connect-src.envsh
+COPY docker/nginx.conf.template /etc/nginx/templates/default.conf.template
+COPY docker/security-headers.conf /etc/nginx/snippets/security-headers.conf
 COPY --from=build /repo/apps/frontend/dist /usr/share/nginx/html
