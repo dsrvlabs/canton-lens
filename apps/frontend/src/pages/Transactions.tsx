@@ -96,6 +96,8 @@ export function Transactions({ hash }: { hash: string }) {
   }, [api, loading, generation, lastOffset, template, party, before, filterKey]);
 
   const clear = () => {
+    setTemplateInput("");
+    setPartyInput("");
     newerStack.length = 0;
     setHashParams({ template: null, party: null, before: null });
   };
