@@ -131,7 +131,11 @@ export function Contracts({ hash }: { hash: string }) {
       party: normalizePartyFilter(partyInput) || null,
     });
   };
-  const clear = () => setHashParams({ template: null, party: null });
+  const clear = () => {
+    setTemplateInput("");
+    setPartyInput("");
+    setHashParams({ template: null, party: null });
+  };
   const clearedHref = hashWith({ template: null, party: null }, hash);
 
   const rows = page?.rows ?? [];
