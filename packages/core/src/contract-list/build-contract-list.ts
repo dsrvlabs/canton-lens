@@ -110,10 +110,22 @@ export function contractMatchesFilter(
 export function buildContractList(
   entries: unknown,
   viewerParty: ViewerPartyInput,
-  opts?: { pageSize?: number; after?: ContractListCursor; filter?: ContractListFilter },
+  opts?: {
+    pageSize?: number;
+    after?: ContractListCursor;
+    filter?: ContractListFilter;
+    // **The viewer reads as every party on the participant and holds none of their own.** Says that the
+    // empty list below is the answer rather than a missing argument, which is the whole reason the guard
+    // is there. Without it a super reader's contract list and timeline came back 502, because the one
+    // viewer for whom an empty list is correct was caught by the check meant for a caller who forgot one.
+    //
+    // It does not loosen anything per row: with no parties, every stakeholder is a counterparty and
+    // explainVisibility answers no_own_parties. Both are true of this viewer.
+    readsAsAnyParty?: boolean;
+  },
 ): BuildContractListResult {
   const viewerList = Array.isArray(viewerParty) ? viewerParty : [viewerParty];
-  if (viewerList.length === 0) {
+  if (viewerList.length === 0 && opts?.readsAsAnyParty !== true) {
     // An input error, distinct from a failed lookup — an empty party list is not glossed over with 0/[]/null.
     return { ok: false, reason: "empty_viewer_parties" };
   }

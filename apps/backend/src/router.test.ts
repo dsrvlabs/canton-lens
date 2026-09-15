@@ -183,10 +183,20 @@ const rightsOnly =
       return { status: 200, body: { user: { id: "viewer", primaryParty: "" } } };
     }
     if (request.path === "/v2/users/viewer/rights") {
-      return { status: 200, body: { rights: [right] } };
+      return { status: 200, body: { rights: Array.isArray(right) ? right : [right] } };
     }
     if (request.path === "/v2/state/ledger-end") {
       return { status: 200, body: { offset: 12 } };
+    }
+    // The point lookups do not answer with a list, and handing them one would fail the route for a reason
+    // that has nothing to do with the viewer — the node's own name for "no such update" is what it sends.
+    if (request.path.startsWith("/v2/updates/update-by-")) {
+      return { status: 404, body: { code: "UPDATE_NOT_FOUND" } };
+    }
+    // Nor does the package list. Its shape is an object, and a route handed an array here fails for a
+    // reason that says nothing about which viewer asked.
+    if (request.path === "/v2/packages") {
+      return { status: 200, body: { packageIds: [] } };
     }
     // Every list the super reader is entitled to ask for. Empty is a complete answer, and it ends the
     // pagination walk, so the routes get to build a real response rather than a failure.
@@ -195,6 +205,7 @@ const rightsOnly =
 
 const SUPER_READER = { kind: { CanReadAsAnyParty: { value: {} } } };
 const PARTICIPANT_ADMIN = { kind: { ParticipantAdmin: { value: {} } } };
+const OWN_PARTY = { kind: { CanReadAs: { value: { party: "alice::1220ab" } } } };
 
 const askAs = async (right: unknown, path: string, query: Record<string, string> = {}) => {
   const asked: string[] = [];
@@ -206,11 +217,54 @@ const askAs = async (right: unknown, path: string, query: Record<string, string>
   return { response, asked, bodies };
 };
 
-test("a viewer who reads as every party is not answered no_party_rights", async () => {
+test("a viewer who reads as every party is served, not merely un-refused", async () => {
+  // **Asserting "not 403" is not enough**, and saying so here because that weaker assertion is what let a
+  // real defect through: /api/contracts and /api/timeline answered 502, because buildContractList rejects
+  // an empty viewer list as a missing argument — the one viewer for whom it is the answer.
+  //
+  // 403 is the refusal this change exists to remove; 502 is this layer calling a working node broken.
+  // Neither is an outcome this viewer may receive on any of these routes.
   for (const [path, query] of PARTY_SCOPED) {
     const { response } = await askAs(SUPER_READER, path, query);
     assert.notEqual(response.status, 403, `${path} shut out a viewer who can read everything`);
-    assert.notDeepEqual(response.body, { reason: "no_party_rights" }, path);
+    assert.notEqual(response.status, 502, `${path} reported a working node as broken`);
+  }
+
+  // The routes that answer with a list have a list to answer with, so for them the outcome is 200 exactly.
+  // The point lookups are left out on purpose: against a stub holding nothing, 404 is the honest answer.
+  const LIST_ROUTES = PARTY_SCOPED.filter(
+    ([path]) => !/\/api\/(contracts\/|updates\/|party\/)/.test(path),
+  );
+  assert.ok(LIST_ROUTES.length > 0);
+  for (const [path, query] of LIST_ROUTES) {
+    const { response } = await askAs(SUPER_READER, path, query);
+    assert.equal(response.status, 200, `${path} answered ${response.status}, not 200`);
+  }
+});
+
+test("holding a party of one's own as well does not narrow a super reader", async () => {
+  // Both rights at once. The party list is not empty, so a filter chosen on the list would quietly send
+  // filtersByParty and return a fraction of what this viewer may read, under a "whole instance" badge.
+  const { bodies } = await askAs([SUPER_READER, OWN_PARTY], "/api/contracts");
+  const acs = bodies.find(
+    (b): b is { filter: { filtersByParty: unknown; filtersForAnyParty?: unknown } } =>
+      typeof b === "object" && b !== null && "filter" in b,
+  );
+  assert.ok(acs, "no active-contracts request was sent");
+  assert.ok(
+    acs.filter.filtersForAnyParty !== undefined,
+    "the request was narrowed to their own parties",
+  );
+  assert.deepEqual(acs.filter.filtersByParty, {});
+});
+
+test("a right whose payload is not the shape the node sends does not grant instance-wide reads", async () => {
+  // `CanReadAsAnyParty` carries a value object, like CanReadAs and CanActAs. Accepting the bare key meant
+  // a malformed rights response could make this layer ask on behalf of a viewer whose rights never said so.
+  for (const malformed of [null, false, "yes", 1]) {
+    const { response } = await askAs({ kind: { CanReadAsAnyParty: malformed } }, "/api/contracts");
+    assert.equal(response.status, 403, `${JSON.stringify(malformed)} was read as a right`);
+    assert.deepEqual(response.body, { reason: "no_party_rights" });
   }
 });
 

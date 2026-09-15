@@ -271,24 +271,23 @@ async function resolveViewer(send: LedgerSend): Promise<ResolvedViewer> {
     return { ok: false, http: { status: 502, body: { reason: "node_error" } } };
   }
   const ownParties = view.parties.map((p) => p.party);
-  // **A viewer with no parties of their own is not automatically without rights.** A super reader
-  // (CanReadAsAnyParty) has none and reads everything; the node serves that request only to them. Judging
-  // on the empty list alone answered them 403 and made their response identical, byte for byte, to a
-  // viewer holding nothing — while the screen above it displayed a "whole instance" badge.
+  // **The scope decides what to ask with; the party list decides whose "mine" it is.** They are read
+  // separately because a viewer can hold both CanReadAsAnyParty and a CanReadAs of their own, and that
+  // viewer reads everything *and* has parties to call theirs. Deciding the filter on the list instead
+  // would quietly narrow them to their own parties while the screen above kept saying "whole instance".
+  const filter: LedgerPartyFilter =
+    view.scope === "instance-wide" ? { anyParty: true } : { parties: ownParties };
+
+  // **Holding no party of one's own is not the same as holding no rights.** A super reader has none and
+  // reads all of them. Judging on the empty list alone answered them 403 and made their response
+  // identical, byte for byte, to a viewer holding nothing.
   //
-  // core decides which one this is, and it is the only place that sees the raw rights (build-viewer-parties.ts).
-  if (ownParties.length === 0) {
-    return view.scope === "instance-wide"
-      ? { ok: true, kind: "parties", filter: { anyParty: true }, ownParties, scope: view.scope }
-      : { ok: true, kind: "no_party_rights" };
+  // core is the only place that sees the raw rights, so it is the only place that can tell these two
+  // apart (build-viewer-parties.ts).
+  if (ownParties.length === 0 && view.scope !== "instance-wide") {
+    return { ok: true, kind: "no_party_rights" };
   }
-  return {
-    ok: true,
-    kind: "parties",
-    filter: { parties: ownParties },
-    ownParties,
-    scope: view.scope,
-  };
+  return { ok: true, kind: "parties", filter, ownParties, scope: view.scope };
 }
 
 async function resolveOffset(
@@ -698,10 +697,10 @@ export async function routeRequest(
     const filter: LedgerPartyFilter | null =
       viewer.outcome !== "view"
         ? null
-        : ownParties.length > 0
-          ? { parties: ownParties }
-          : viewer.scope === "instance-wide"
-            ? { anyParty: true }
+        : viewer.scope === "instance-wide"
+          ? { anyParty: true }
+          : ownParties.length > 0
+            ? { parties: ownParties }
             : null;
     // When there is nothing to ask, the cards say so by name rather than carrying an empty filter to the
     // node — an empty filtersByParty is not an empty answer, it is a question that does not hold.
@@ -875,6 +874,7 @@ export async function routeRequest(
       ...(pageSize !== undefined ? { pageSize } : {}),
       ...(after !== undefined ? { after } : {}),
       filter,
+      readsAsAnyParty: viewer.scope === "instance-wide",
     });
     if (!listResult.ok) {
       return { status: 502, body: { reason: "node_error" } };
@@ -1068,6 +1068,7 @@ export async function routeRequest(
     const listResult = buildContractList(acsEnvelope.rows, viewer.ownParties, {
       pageSize: Math.max(1, acsEnvelope.rows.length),
       filter,
+      readsAsAnyParty: viewer.scope === "instance-wide",
     });
     if (!listResult.ok) {
       return { status: 502, body: { reason: "node_error" } };

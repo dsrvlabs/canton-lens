@@ -102,7 +102,11 @@ export function buildViewerParties(user: unknown, rights: unknown): BuildViewerP
     //
     // Counting ParticipantAdmin gave an administrator a scope saying they could read the whole instance
     // and a screen that could show them nothing, since every read they could make would be refused.
-    if (!matchedPartyKind && kind.CanReadAsAnyParty !== undefined) {
+    // **The shape is checked, not just the key.** The node's schema gives this right a `value` object, the
+    // same as CanReadAs and CanActAs above. `!== undefined` alone accepted `null`, `false` and a bare key
+    // with no value — shapes no valid response produces. That was harmless while the scope only chose a
+    // badge; it now chooses what the request asks for, so it is read the way the other rights are read.
+    if (!matchedPartyKind && isRecord(kind.CanReadAsAnyParty)) {
       instanceWide = true;
     }
   }

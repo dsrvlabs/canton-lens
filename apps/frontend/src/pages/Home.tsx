@@ -57,6 +57,9 @@ export function Home() {
   const c = h.cards;
   // The "my parties" card — the number of parties on the token.
   const n = h.viewer?.partyCount ?? 0;
+  // A super reader holds no party of their own and reads every one of them, so "0 parties — the parties
+  // this token reads the ledger as" would be exactly backwards: it reads as all of them.
+  const readsAsAnyParty = h.viewer?.scope === "instance-wide" && n === 0;
   const o = c.pendingOffers;
   const t = c.tokens;
   const offerNotes: string[] = [];
@@ -92,9 +95,15 @@ export function Home() {
           id="parties-card"
           href="#/parties"
           label="Parties"
-          value={<span id="parties-count">{n}</span>}
-          unit={n === 1 ? "party" : "parties"}
-          sub={<span id="parties-note">the parties this token reads the ledger as</span>}
+          value={<span id="parties-count">{readsAsAnyParty ? "all" : n}</span>}
+          unit={readsAsAnyParty ? "parties" : n === 1 ? "party" : "parties"}
+          sub={
+            <span id="parties-note">
+              {readsAsAnyParty
+                ? "this token reads as every party on the participant and holds none of its own"
+                : "the parties this token reads the ledger as"}
+            </span>
+          }
         />
         {c.activeContracts.status === "ok" ? (
           <Card

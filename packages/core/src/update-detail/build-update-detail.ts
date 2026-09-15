@@ -65,7 +65,10 @@ export type UpdateDetailView =
       events: UpdateDetailEvent[];
       visibility:
         | { status: "ok"; reasons: UpdateVisibilityReason[] }
-        | { status: "no_party_found" };
+        | { status: "no_party_found" }
+        // The viewer holds no party of their own — a super reader reading as all of them. Separate from
+        // no_party_found, which says a match was looked for and not found.
+        | { status: "no_own_parties" };
     }
   | {
       kind: "reassignment" | "topology" | "checkpoint";
@@ -196,7 +199,14 @@ export function buildUpdateDetail(
         submittedByYou: str(value.commandId) !== null,
       },
       events,
-      visibility: reasons.length === 0 ? { status: "no_party_found" } : { status: "ok", reasons },
+      // Folding per event loses which of the two empty outcomes it was, so the distinction is made on the
+      // same input explainVisibility judges: no parties of one's own is not a search that came back empty.
+      visibility:
+        reasons.length > 0
+          ? { status: "ok", reasons }
+          : viewerParties.length === 0
+            ? { status: "no_own_parties" }
+            : { status: "no_party_found" },
     },
   };
 }
