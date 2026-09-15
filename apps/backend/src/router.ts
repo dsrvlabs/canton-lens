@@ -874,7 +874,7 @@ export async function routeRequest(
       ...(pageSize !== undefined ? { pageSize } : {}),
       ...(after !== undefined ? { after } : {}),
       filter,
-      readsAsAnyParty: viewer.scope === "instance-wide",
+      readsAsAnyParty: viewer.scope === "instance-wide" && viewer.ownParties.length === 0,
     });
     if (!listResult.ok) {
       return { status: 502, body: { reason: "node_error" } };
@@ -1068,7 +1068,7 @@ export async function routeRequest(
     const listResult = buildContractList(acsEnvelope.rows, viewer.ownParties, {
       pageSize: Math.max(1, acsEnvelope.rows.length),
       filter,
-      readsAsAnyParty: viewer.scope === "instance-wide",
+      readsAsAnyParty: viewer.scope === "instance-wide" && viewer.ownParties.length === 0,
     });
     if (!listResult.ok) {
       return { status: 502, body: { reason: "node_error" } };

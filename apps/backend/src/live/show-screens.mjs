@@ -97,12 +97,16 @@ for (const entry of viewer.parties) console.log(`  party    ${entry.party}  [${e
 if (viewer.parties.length === 0) console.log("  party    none — there is nothing to see");
 
 const parties = viewer.parties.map((entry) => entry.party);
+// What the ledger is asked with. A viewer reading as every party holds none of their own, so the party
+// list is not what decides this — the scope is. Same judgment as the router's resolveViewer; this file is
+// plain JavaScript, so nothing but this line keeps it honest.
+const partyFilter = viewer.scope === "instance-wide" ? { anyParty: true } : { parties };
 
 // ── 2. Contract list ─────────────────────────────────────────────────────────
 // Take the offset first and receive the snapshot as of that point. A Live-mode answer is always for a
 // specific offset, and if that value is not on screen the user cannot tell when it is from.
 const end = must("current offset", await callGetLedgerEnd(send));
-const acs = must("active contracts", await callGetActiveContracts(send, parties, end.offset));
+const acs = must("active contracts", await callGetActiveContracts(send, partyFilter, end.offset));
 
 const entries = events(acs);
 const list = buildContractList(entries, parties[0] ?? "", { pageSize: 5 });
@@ -146,7 +150,7 @@ if (!INTERFACE_ID) {
 } else {
   const viewed = must(
     "active contracts queried by interface",
-    await callGetActiveContracts(send, parties, end.offset, INTERFACE_ID),
+    await callGetActiveContracts(send, partyFilter, end.offset, INTERFACE_ID),
   );
   const offers = buildTransferOffers(events(viewed), INTERFACE_ID, new Date());
   if (offers.kind !== "available") console.log(`  could not fetch: ${offers.reason}`);

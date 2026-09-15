@@ -8,9 +8,8 @@
 //
 // **`filtersForAnyParty` is sent alone, with `filtersByParty` left empty.** The node's document calls it
 // "wildcard filters that apply to all the parties existing on the participant"; naming parties beside it
-// would narrow the very thing it is for. Measured on Canton 3.5.15 (2026-09-15): sent this way with a
-// CanReadAsAnyParty token it answers 200 and returns strictly more than the same viewer's own parties do
-// (40 elements against 9 on the test stack).
+// would narrow the very thing it is for. Sent this way against Canton 3.5.15 it is answered 200 for a
+// CanReadAsAnyParty token, and returns strictly more than the same viewer's own parties do.
 
 import type { LedgerPartyFilter } from "./types.ts";
 
@@ -20,6 +19,14 @@ export function eventFormatFilters(
 ): { filtersByParty: Record<string, { cumulative: unknown[] }>; filtersForAnyParty?: unknown } {
   if ("anyParty" in filter) {
     return { filtersByParty: {}, filtersForAnyParty: { cumulative: [cumulativeEntry] } };
+  }
+  // This union replaced a plain string[], and not every caller is typechecked — the live scripts in
+  // apps/backend/src/live are plain JavaScript. One passing the old shape used to die further in on
+  // "filter.parties is not iterable", which names neither the argument nor the change.
+  if (!Array.isArray(filter?.parties)) {
+    throw new TypeError(
+      "a ledger party filter is { parties: string[] } or { anyParty: true } — a bare party list is not one",
+    );
   }
   const filtersByParty: Record<string, { cumulative: unknown[] }> = {};
   for (const party of filter.parties) {

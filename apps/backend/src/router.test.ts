@@ -261,11 +261,72 @@ test("holding a party of one's own as well does not narrow a super reader", asyn
 test("a right whose payload is not the shape the node sends does not grant instance-wide reads", async () => {
   // `CanReadAsAnyParty` carries a value object, like CanReadAs and CanActAs. Accepting the bare key meant
   // a malformed rights response could make this layer ask on behalf of a viewer whose rights never said so.
-  for (const malformed of [null, false, "yes", 1]) {
+  // Both levels are covered: the primitives, and the shapes that pass a check of the outer level alone.
+  for (const malformed of [null, false, "yes", 1, {}, [], { value: null }, { value: "x" }]) {
     const { response } = await askAs({ kind: { CanReadAsAnyParty: malformed } }, "/api/contracts");
     assert.equal(response.status, 403, `${JSON.stringify(malformed)} was read as a right`);
     assert.deepEqual(response.body, { reason: "no_party_rights" });
   }
+  // The shape the node does send is still read as the right it is.
+  const { response } = await askAs(SUPER_READER, "/api/contracts");
+  assert.equal(response.status, 200);
+});
+
+test("/api/home asks as every party too — the home has its own filter choice", async () => {
+  // resolveViewer and /api/home decide this separately, so a test of one does not hold the other. The home
+  // used to gate its cards on the party count, which is the same mistake in a second place.
+  for (const rights of [[SUPER_READER], [SUPER_READER, OWN_PARTY]]) {
+    const { bodies } = await askAs(rights, "/api/home", { asOf: INSTANT });
+    const acs = bodies.find(
+      (b): b is { filter: { filtersByParty: unknown; filtersForAnyParty?: unknown } } =>
+        typeof b === "object" && b !== null && "filter" in b,
+    );
+    assert.ok(acs, "the home sent no active-contracts request");
+    assert.ok(
+      acs.filter.filtersForAnyParty !== undefined,
+      "the home narrowed a viewer who reads as every party",
+    );
+  }
+});
+
+test("the visibility line on an update detail names the right circumstance", async () => {
+  // buildUpdateDetail folds the per-event answers, and the fold used to rebuild no_party_found from the
+  // count alone — so the new status never reached this screen even after explainVisibility learned it.
+  const { buildUpdateDetail } = await import("@canton-lens/core");
+  const update = {
+    updateId: UPDATE_ID,
+    offset: 5,
+    effectiveAt: INSTANT,
+    recordTime: INSTANT,
+    events: [
+      {
+        CreatedEvent: {
+          nodeId: 0,
+          contractId: "00ab",
+          templateId: HOLDING_INTERFACE,
+          signatories: ["alice::1220ab"],
+          observers: [],
+          witnessParties: [],
+          createArgument: {},
+        },
+      },
+    ],
+  };
+  const superReader = buildUpdateDetail({ update: { Transaction: { value: update } } }, []);
+  assert.ok(superReader.ok);
+  assert.equal(superReader.view.kind, "transaction");
+  assert.equal(
+    superReader.view.visibility.status,
+    "no_own_parties",
+    "a viewer holding no party of their own was told a search had failed",
+  );
+  // A viewer who does hold a party, and is not on it, still gets the status that says so.
+  const elsewhere = buildUpdateDetail({ update: { Transaction: { value: update } } }, [
+    "carol::1220ab",
+  ]);
+  assert.ok(elsewhere.ok);
+  assert.equal(elsewhere.view.kind, "transaction");
+  assert.equal(elsewhere.view.visibility.status, "no_party_found");
 });
 
 test("the request carries filtersForAnyParty, and names no party beside it", async () => {
