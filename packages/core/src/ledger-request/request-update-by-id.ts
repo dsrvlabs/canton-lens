@@ -37,8 +37,11 @@ export async function callGetUpdateById(
   filter: LedgerPartyFilter,
   updateId: string,
 ): Promise<LedgerCallResult<unknown>> {
+  // **Built outside the catch.** Building a request is not sending one, so a caller-contract error here
+  // (a filter that is neither shape) must not be reported as `unreachable` — the node was never asked.
+  const request = buildGetUpdateByIdRequest(filter, updateId);
   try {
-    const { status, body } = await send(buildGetUpdateByIdRequest(filter, updateId));
+    const { status, body } = await send(request);
     return interpretLedgerResponse<unknown>(status, body);
   } catch (error) {
     return {

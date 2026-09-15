@@ -120,7 +120,6 @@ export {
 // **request shape**, which no test here can reach — unit tests see only captured responses. Drop build* and
 // that check breaks with nothing in this repository going red.
 export { interpretLedgerResponse } from "./ledger-request/interpret.ts";
-export { ownPartiesOf } from "./ledger-request/party-filter.ts";
 export {
   buildGetActiveContractsRequest,
   callGetActiveContracts,

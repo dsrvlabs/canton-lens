@@ -171,9 +171,9 @@ test("/api/home is unchanged — it names the circumstance inside a 200", async 
 // the empty party list alone answered them 403 no_party_rights — a response identical, byte for byte, to a
 // viewer holding nothing — while the screen above it displayed a "whole instance" badge.
 //
-// Measured against Canton 3.5.15 on 2026-09-15, on the local test stack: the same token and the same
-// request, 403 without the right and 200 with it, returning 40 elements where the viewer's own parties
-// returned 9. ParticipantAdmin was measured separately and does **not** serve the request — see below.
+// Measured against Canton 3.5.15: the same token and the same request, 403 without the right and 200 with
+// it, returning strictly more than the viewer's own parties do. ParticipantAdmin was measured separately
+// and does **not** serve the request — see below.
 
 const rightsOnly =
   (right: unknown, asked: string[], bodies: unknown[]) => async (request: LedgerRequest) => {
@@ -270,6 +270,38 @@ test("a right whose payload is not the shape the node sends does not grant insta
   // The shape the node does send is still read as the right it is.
   const { response } = await askAs(SUPER_READER, "/api/contracts");
   assert.equal(response.status, 200);
+});
+
+test("a filter that is neither shape is refused by name, and not as a failure to reach the node", async () => {
+  // The union replaced a plain string[] and the live scripts are plain JavaScript, so this is the one
+  // check standing between a caller passing the old shape and a request built from nothing. `unreachable`
+  // would be the wrong name for it — the node is never asked.
+  const { buildGetActiveContractsRequest, callGetActiveContracts } = await import(
+    "@canton-lens/core"
+  );
+  for (const bad of [
+    ["alice::1220ab"],
+    null,
+    undefined,
+    "alice::1220ab",
+    {},
+    { anyParty: false },
+  ]) {
+    assert.throws(
+      () => buildGetActiveContractsRequest(bad as never, 1),
+      /ledger party filter/,
+      `${JSON.stringify(bad) ?? "undefined"} was accepted`,
+    );
+  }
+  // It reaches the caller as a throw rather than as a LedgerCallResult, so a walk cannot swallow it into
+  // the transport's name for a node that could not be reached.
+  await assert.rejects(
+    () => callGetActiveContracts(async () => ({ status: 200, body: [] }), ["x"] as never, 1),
+    /ledger party filter/,
+  );
+  // Both real shapes still pass.
+  assert.ok(buildGetActiveContractsRequest({ anyParty: true }, 1));
+  assert.ok(buildGetActiveContractsRequest({ parties: ["alice::1220ab"] }, 1));
 });
 
 test("/api/home asks as every party too — the home has its own filter choice", async () => {

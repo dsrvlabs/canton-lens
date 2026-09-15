@@ -11,32 +11,35 @@
 // would narrow the very thing it is for. Sent this way against Canton 3.5.15 it is answered 200 for a
 // CanReadAsAnyParty token, and returns strictly more than the same viewer's own parties do.
 
+import { isRecord } from "../internal/guards.ts";
 import type { LedgerPartyFilter } from "./types.ts";
 
 export function eventFormatFilters(
   filter: LedgerPartyFilter,
   cumulativeEntry: unknown,
 ): { filtersByParty: Record<string, { cumulative: unknown[] }>; filtersForAnyParty?: unknown } {
-  if ("anyParty" in filter) {
-    return { filtersByParty: {}, filtersForAnyParty: { cumulative: [cumulativeEntry] } };
-  }
-  // This union replaced a plain string[], and not every caller is typechecked — the live scripts in
-  // apps/backend/src/live are plain JavaScript. One passing the old shape used to die further in on
-  // "filter.parties is not iterable", which names neither the argument nor the change.
-  if (!Array.isArray(filter?.parties)) {
+  // **Judged before it is used.** This union replaced a plain string[], and not every caller is
+  // typechecked — the live scripts in apps/backend/src/live are plain JavaScript. Reading `"anyParty" in
+  // filter` first would make `null` die on the engine's own message, and would read `{ anyParty: false }`
+  // as a request to read everything, which is the opposite of what it says.
+  const anyParty = isRecord(filter) && (filter as { anyParty?: unknown }).anyParty === true;
+  const parties = isRecord(filter) ? (filter as { parties?: unknown }).parties : undefined;
+  if (!anyParty && !Array.isArray(parties)) {
     throw new TypeError(
       "a ledger party filter is { parties: string[] } or { anyParty: true } — a bare party list is not one",
     );
   }
+  if (anyParty) {
+    return { filtersByParty: {}, filtersForAnyParty: { cumulative: [cumulativeEntry] } };
+  }
   const filtersByParty: Record<string, { cumulative: unknown[] }> = {};
-  for (const party of filter.parties) {
+  for (const party of parties as readonly string[]) {
     filtersByParty[party] = { cumulative: [cumulativeEntry] };
   }
   return { filtersByParty };
 }
 
-// The parties a "which of these are mine" question may be answered with. An instance-wide viewer reads as
-// no party at all, and that is not the same as holding none: the difference is what the caller must carry
-// into the answer, so it is spelled here rather than left to `"parties" in filter ? … : []` at each site.
-export const ownPartiesOf = (filter: LedgerPartyFilter): readonly string[] =>
-  "anyParty" in filter ? [] : filter.parties;
+// **There is deliberately no ownPartiesOf(filter) here.** It reads as the obvious companion and it would be
+// wrong: the filter says what the ledger is asked with, and a viewer holding CanReadAsAnyParty may hold
+// parties of their own as well. Deriving "whose mine is it" from the filter is exactly the conflation this
+// union was split out of. The two are carried separately by whoever knows both.

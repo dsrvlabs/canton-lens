@@ -70,8 +70,11 @@ export async function collectLedgerPages(
 
   for (let page = 0; page < LEDGER_MAX_PAGES; page++) {
     let response: { status: number; body: unknown };
+    // **Built outside the catch.** Building a request is not sending one, so a caller-contract error here
+    // (a filter that is neither shape) must not be reported as `unreachable` — the node was never asked.
+    const request = buildRequest(cursor);
     try {
-      response = await send(buildRequest(cursor));
+      response = await send(request);
     } catch (error) {
       return {
         ok: false,

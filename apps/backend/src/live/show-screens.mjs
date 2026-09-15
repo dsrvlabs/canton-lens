@@ -94,13 +94,20 @@ heading("My parties and rights");
 console.log(`  user     ${viewer.userId}`);
 console.log(`  scope    ${viewer.scope === "own" ? "my scope" : "entire instance ← a badge is shown"}`);
 for (const entry of viewer.parties) console.log(`  party    ${entry.party}  [${entry.kinds.join(", ")}]`);
-if (viewer.parties.length === 0) console.log("  party    none — there is nothing to see");
+if (viewer.parties.length === 0) {
+  console.log(
+    viewer.scope === "instance-wide"
+      ? "  party    none of its own — this token reads as every party on the participant"
+      : "  party    none — there is nothing to see",
+  );
+}
 
 const parties = viewer.parties.map((entry) => entry.party);
-// What the ledger is asked with. A viewer reading as every party holds none of their own, so the party
-// list is not what decides this — the scope is. Same judgment as the router's resolveViewer; this file is
-// plain JavaScript, so nothing but this line keeps it honest.
+// **The scope decides what to ask with; the party list decides whose "mine" it is.** A viewer can hold
+// CanReadAsAnyParty and a CanReadAs of their own, and reads everything either way. Same judgment as the
+// router's resolveViewer; this file is plain JavaScript, so nothing but these two lines keeps it honest.
 const partyFilter = viewer.scope === "instance-wide" ? { anyParty: true } : { parties };
+const readsAsAnyParty = viewer.scope === "instance-wide" && parties.length === 0;
 
 // ── 2. Contract list ─────────────────────────────────────────────────────────
 // Take the offset first and receive the snapshot as of that point. A Live-mode answer is always for a
@@ -109,7 +116,7 @@ const end = must("current offset", await callGetLedgerEnd(send));
 const acs = must("active contracts", await callGetActiveContracts(send, partyFilter, end.offset));
 
 const entries = events(acs);
-const list = buildContractList(entries, parties[0] ?? "", { pageSize: 5 });
+const list = buildContractList(entries, parties, { pageSize: 5, readsAsAnyParty });
 if (!list.ok) {
   console.error("could not build the contract list:", list.reason);
   process.exit(1);
