@@ -96,8 +96,15 @@ test("answers in viewer-party order", () => {
   );
 });
 
-test("no viewer parties is no_party_found — no role is invented against an empty list", () => {
+test("no viewer parties of my own is its own status — not a search that failed", () => {
+  // The viewer that reaches here with an empty list is the super reader (CanReadAsAnyParty): they read as
+  // every party and hold none. no_party_found would say a match was looked for and not found, which the
+  // screen words as “the material is lacking” — about material that is complete.
   assert.deepEqual(explainVisibility([], { signatories: [ALICE], observers: [BOB] }), {
+    status: "no_own_parties",
+  });
+  // The distinction is kept: a viewer who does hold a party, and does not appear, still gets no_party_found.
+  assert.deepEqual(explainVisibility([CAROL], { signatories: [ALICE], observers: [BOB] }), {
     status: "no_party_found",
   });
 });

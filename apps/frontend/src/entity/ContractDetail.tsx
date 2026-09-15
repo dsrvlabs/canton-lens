@@ -162,6 +162,14 @@ export function ContractDetail({ contractId }: { contractId: string }) {
               ))
             ) : v.visibility.status === "no_party_found" ? (
               <Muted>none of your parties is a signatory or observer here</Muted>
+            ) : v.visibility.status === "no_own_parties" ? (
+              // A super reader reads as every party and holds none, so there is no "your parties" to
+              // report a role for. Saying "none of your parties is a signatory" would read as an absence
+              // that was checked for.
+              <Muted>
+                this account reads as every party and holds none of its own, so there is no role to
+                report
+              </Muted>
             ) : (
               <Muted>not determined</Muted>
             )}{" "}

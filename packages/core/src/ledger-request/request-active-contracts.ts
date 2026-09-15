@@ -4,9 +4,12 @@ import {
   type LedgerPageCursor,
   withPageLimit,
 } from "./paginate.ts";
-import type { LedgerCallResult, LedgerRequest, LedgerSend } from "./types.ts";
+import { eventFormatFilters } from "./party-filter.ts";
+import type { LedgerCallResult, LedgerPartyFilter, LedgerRequest, LedgerSend } from "./types.ts";
 
-// The party scope is given only via filter.filtersByParty. No other global filter keys are placed in the body.
+// The party scope is given only via filter.filtersByParty, or — for a viewer reading as every party on the
+// participant — via filter.filtersForAnyParty. Which of the two is decided by LedgerPartyFilter and nowhere
+// else; see party-filter.ts. No other global filter keys are placed in the body.
 //
 // **The snapshot is asked for in parts.** `limit` caps one response at LEDGER_PAGE_SIZE elements, and
 // `streamContinuationToken` says where the next part starts. Without it the node answers
@@ -16,7 +19,7 @@ import type { LedgerCallResult, LedgerRequest, LedgerSend } from "./types.ts";
 // hold inside one callGetActiveContracts — the offset is fixed for the whole walk and the walk is one
 // sequence of calls to one participant.
 export function buildGetActiveContractsRequest(
-  parties: readonly string[],
+  filter: LedgerPartyFilter,
   offset: number,
   interfaceId?: string,
   streamContinuationToken?: string,
@@ -32,16 +35,11 @@ export function buildGetActiveContractsRequest(
           },
         };
 
-  const filtersByParty: Record<string, { cumulative: unknown[] }> = {};
-  for (const party of parties) {
-    filtersByParty[party] = { cumulative: [cumulativeEntry] };
-  }
-
   return {
     method: "POST",
     path: withPageLimit("/v2/state/active-contracts", LEDGER_PAGE_SIZE),
     body: {
-      filter: { filtersByParty },
+      filter: eventFormatFilters(filter, cumulativeEntry),
       verbose: true,
       activeAtOffset: offset,
       ...(streamContinuationToken === undefined ? {} : { streamContinuationToken }),
@@ -61,7 +59,7 @@ function readContinuationToken(lastElement: unknown): LedgerPageCursor | undefin
 // one result, not a page. What ends the walk and what bounds it is written once, in paginate.ts.
 export async function callGetActiveContracts(
   send: LedgerSend,
-  parties: readonly string[],
+  filter: LedgerPartyFilter,
   offset: number,
   interfaceId?: string,
 ): Promise<LedgerCallResult<unknown>> {
@@ -69,7 +67,7 @@ export async function callGetActiveContracts(
     send,
     (cursor) =>
       buildGetActiveContractsRequest(
-        parties,
+        filter,
         offset,
         interfaceId,
         cursor === undefined ? undefined : String(cursor),

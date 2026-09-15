@@ -152,6 +152,7 @@ export type {
   LedgerCallOk,
   LedgerCallResult,
   LedgerFailureReason,
+  LedgerPartyFilter,
   LedgerRequest,
   LedgerSend,
 } from "./ledger-request/types.ts";

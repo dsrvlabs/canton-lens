@@ -3,10 +3,12 @@
 import type {
   HomeSource,
   LedgerCallResult,
+  LedgerPartyFilter,
   LedgerRequest,
   LedgerSend,
   NodeOffsetReading,
   PackageSchema,
+  ViewerScope,
 } from "@canton-lens/core";
 import {
   buildContractDetail,
@@ -217,11 +219,28 @@ function decodePathSegment(raw: string): { ok: true; value: string } | { ok: fal
   }
 }
 
-// The viewer's party set, or the reason it cannot be used. The `no_party_rights` case carries no
-// `parties` field on purpose — a caller cannot reach the ledger with an empty filter by accident; it has
-// to answer that case first.
+// The viewer's party set, or the reason it cannot be used. The `no_party_rights` case carries neither
+// field on purpose — a caller cannot reach the ledger with an empty filter by accident; it has to answer
+// that case first.
+//
+// **The reader case carries two party-shaped fields and they are not the same question.**
+//
+//   filter      what to ask the ledger with. `{ parties }` for nearly everyone, `{ anyParty: true }` for a
+//               viewer holding CanReadAsAnyParty. Goes to callGetActiveContracts · callGetUpdates ·
+//               callGetUpdateById · callGetUpdateByOffset and nowhere else.
+//   ownParties  whose "mine" this is — the parties that answer "why can I see this", "did I send or receive
+//               it", "which of my parties are on it". Goes to the core builders. **Empty for a super
+//               reader**, who is reading as everyone and so is party to nothing.
+//
+// They used to be one array, which worked only while every viewer's answer to both was the same list.
 type ResolvedViewer =
-  | { ok: true; kind: "parties"; parties: string[] }
+  | {
+      ok: true;
+      kind: "parties";
+      filter: LedgerPartyFilter;
+      ownParties: string[];
+      scope: ViewerScope;
+    }
   | { ok: true; kind: "no_party_rights" }
   | { ok: false; http: RouterResponse };
 
@@ -251,10 +270,24 @@ async function resolveViewer(send: LedgerSend): Promise<ResolvedViewer> {
     // so it is mapped to 502 (treated as a data problem on the ledger side).
     return { ok: false, http: { status: 502, body: { reason: "node_error" } } };
   }
-  const parties = view.parties.map((p) => p.party);
-  return parties.length === 0
-    ? { ok: true, kind: "no_party_rights" }
-    : { ok: true, kind: "parties", parties };
+  const ownParties = view.parties.map((p) => p.party);
+  // **The scope decides what to ask with; the party list decides whose "mine" it is.** They are read
+  // separately because a viewer can hold both CanReadAsAnyParty and a CanReadAs of their own, and that
+  // viewer reads everything *and* has parties to call theirs. Deciding the filter on the list instead
+  // would quietly narrow them to their own parties while the screen above kept saying "whole instance".
+  const filter: LedgerPartyFilter =
+    view.scope === "instance-wide" ? { anyParty: true } : { parties: ownParties };
+
+  // **Holding no party of one's own is not the same as holding no rights.** A super reader has none and
+  // reads all of them. Judging on the empty list alone answered them 403 and made their response
+  // identical, byte for byte, to a viewer holding nothing.
+  //
+  // core is the only place that sees the raw rights, so it is the only place that can tell these two
+  // apart (build-viewer-parties.ts).
+  if (ownParties.length === 0 && view.scope !== "instance-wide") {
+    return { ok: true, kind: "no_party_rights" };
+  }
+  return { ok: true, kind: "parties", filter, ownParties, scope: view.scope };
 }
 
 async function resolveOffset(
@@ -284,14 +317,14 @@ async function resolveOffset(
 //
 async function readHomeAcs<T>(
   send: LedgerSend,
-  parties: readonly string[],
+  filter: LedgerPartyFilter,
   offset: number,
   envelope: (raw: unknown) => EnvelopeResult<T>,
   interfaceId?: string,
 ): Promise<HomeSource<T[]>> {
   const result: LedgerCallResult<unknown> = await callGetActiveContracts(
     send,
-    parties,
+    filter,
     offset,
     interfaceId,
   );
@@ -541,7 +574,7 @@ export async function routeRequest(
     }
     const acsResult: LedgerCallResult<unknown> = await callGetActiveContracts(
       send,
-      viewer.parties,
+      viewer.filter,
       offsetResult.offset,
     );
     // An ACS failure does not kill the whole request — only the sections that come from contracts (Contracts·Parties·Templates) become unavailable with a reason,
@@ -595,7 +628,7 @@ export async function routeRequest(
     if (classification.kind === "update_id") {
       const lookup: LedgerCallResult<unknown> = await callGetUpdateById(
         send,
-        viewer.parties,
+        viewer.filter,
         classification.updateId,
       );
       if (!lookup.ok) {
@@ -604,7 +637,7 @@ export async function routeRequest(
             ? { status: lookup.reason }
             : { status: "unavailable", reason: lookup.reason };
       } else {
-        const detail = buildUpdateDetail(lookup.value, viewer.parties);
+        const detail = buildUpdateDetail(lookup.value, viewer.ownParties);
         update = detail.ok
           ? { status: "found", view: detail.view }
           : { status: "unavailable", reason: detail.reason };
@@ -653,11 +686,24 @@ export async function routeRequest(
       return ledgerFailureToHttp(rightsResult.reason);
     }
     const viewer = buildViewerParties(userResult.value, rightsResult.value);
-    const parties = viewer.outcome === "view" ? viewer.parties.map((p) => p.party) : [];
+    const ownParties = viewer.outcome === "view" ? viewer.parties.map((p) => p.party) : [];
     const offset = offsetResult.offset;
     const beginExclusive = Math.max(0, offset - UPDATES_LOOKBACK);
-    // If there are no parties there is nothing to ask the ledger — when filtersByParty is empty it is not that the answer is empty,
-    // the question does not hold. core names that circumstance no_party_rights.
+    // What to ask the ledger with, or null when there is nothing to ask. The same judgment resolveViewer
+    // makes, and for the same reason: an empty party list is not by itself the absence of rights, because a
+    // super reader holds no parties of their own and still reads every one of them. Without this the home
+    // answered a super reader with a page of "no party rights" cards while its own viewer block, built from
+    // the same `viewer`, reported their scope as instance-wide.
+    const filter: LedgerPartyFilter | null =
+      viewer.outcome !== "view"
+        ? null
+        : viewer.scope === "instance-wide"
+          ? { anyParty: true }
+          : ownParties.length > 0
+            ? { parties: ownParties }
+            : null;
+    // When there is nothing to ask, the cards say so by name rather than carrying an empty filter to the
+    // node — an empty filtersByParty is not an empty answer, it is a question that does not hold.
     let contracts: HomeSource<readonly unknown[]> = { ok: false, reason: "no_party_rights" };
     let offers: HomeSource<{ contracts: unknown; interfaceId: string }> = {
       ok: false,
@@ -669,8 +715,8 @@ export async function routeRequest(
     };
     let updates: HomeSource<unknown> = { ok: false, reason: "no_party_rights" };
 
-    if (parties.length > 0) {
-      contracts = await readHomeAcs(send, parties, offset, toContractListEntries);
+    if (filter !== null) {
+      contracts = await readHomeAcs(send, filter, offset, toContractListEntries);
 
       // The two interfaces are passed as constants by the screen (the standard interfaces the Explorer knows).
       // If not passed, that card becomes “could not be fetched” and says why by name.
@@ -678,7 +724,7 @@ export async function routeRequest(
       if (offerInterfaceId === undefined) {
         offers = { ok: false, reason: "interface_id_not_provided" };
       } else {
-        const read = await readHomeAcs(send, parties, offset, toRawCreatedEvents, offerInterfaceId);
+        const read = await readHomeAcs(send, filter, offset, toRawCreatedEvents, offerInterfaceId);
         offers = read.ok
           ? { ok: true, value: { contracts: read.value, interfaceId: offerInterfaceId } }
           : read;
@@ -689,7 +735,7 @@ export async function routeRequest(
       } else {
         const read = await readHomeAcs(
           send,
-          parties,
+          filter,
           offset,
           toRawCreatedEvents,
           holdingInterfaceId,
@@ -705,7 +751,7 @@ export async function routeRequest(
       } else {
         const updatesResult: LedgerCallResult<unknown> = await callGetUpdates(
           send,
-          parties,
+          filter,
           beginExclusive,
           offset,
         );
@@ -788,7 +834,7 @@ export async function routeRequest(
     }
     const acsResult: LedgerCallResult<unknown> = await callGetActiveContracts(
       send,
-      viewer.parties,
+      viewer.filter,
       offsetResult.offset,
     );
     if (!acsResult.ok) {
@@ -824,10 +870,11 @@ export async function routeRequest(
     // Passes **all** of the viewer's parties. For a while only primaryParty was passed, and for someone
     // with several parties the rest of their own parties showed up as “counterparties” (constraint ① in packages/core/src/index.ts).
     // What is absent has no key at all (exactOptionalPropertyTypes).
-    const listResult = buildContractList(envelope.rows, viewer.parties, {
+    const listResult = buildContractList(envelope.rows, viewer.ownParties, {
       ...(pageSize !== undefined ? { pageSize } : {}),
       ...(after !== undefined ? { after } : {}),
       filter,
+      readsAsAnyParty: viewer.scope === "instance-wide" && viewer.ownParties.length === 0,
     });
     if (!listResult.ok) {
       return { status: 502, body: { reason: "node_error" } };
@@ -877,7 +924,7 @@ export async function routeRequest(
     const beginExclusive = Math.max(0, offsetResult.offset - UPDATES_LOOKBACK);
     const updatesResult: LedgerCallResult<unknown> = await callGetUpdates(
       send,
-      viewer.parties,
+      viewer.filter,
       beginExclusive,
       offsetResult.offset,
     );
@@ -981,7 +1028,7 @@ export async function routeRequest(
     }
     const updatesResult: LedgerCallResult<unknown> = await callGetUpdates(
       send,
-      viewer.parties,
+      viewer.filter,
       beginExclusive,
       end,
     );
@@ -1007,7 +1054,7 @@ export async function routeRequest(
     }
     const acsResult: LedgerCallResult<unknown> = await callGetActiveContracts(
       send,
-      viewer.parties,
+      viewer.filter,
       end,
     );
     if (!acsResult.ok) {
@@ -1018,9 +1065,10 @@ export async function routeRequest(
       return { status: 502, body: { reason: "node_error" } };
     }
     // pageSize is the whole of the visible set for the same reason as above.
-    const listResult = buildContractList(acsEnvelope.rows, viewer.parties, {
+    const listResult = buildContractList(acsEnvelope.rows, viewer.ownParties, {
       pageSize: Math.max(1, acsEnvelope.rows.length),
       filter,
+      readsAsAnyParty: viewer.scope === "instance-wide" && viewer.ownParties.length === 0,
     });
     if (!listResult.ok) {
       return { status: 502, body: { reason: "node_error" } };
@@ -1073,14 +1121,14 @@ export async function routeRequest(
     const lookup: LedgerCallResult<unknown> = updateByOffsetMatch
       ? await callGetUpdateByOffset(
           send,
-          viewer.parties,
+          viewer.filter,
           Number.parseInt(updateByOffsetMatch[1] ?? "0", 10),
         )
-      : await callGetUpdateById(send, viewer.parties, decodedUpdateId);
+      : await callGetUpdateById(send, viewer.filter, decodedUpdateId);
     if (!lookup.ok) {
       return ledgerFailureToHttp(lookup.reason);
     }
-    const detail = buildUpdateDetail(lookup.value, viewer.parties);
+    const detail = buildUpdateDetail(lookup.value, viewer.ownParties);
     if (!detail.ok) {
       return { status: 502, body: { reason: "node_error" } };
     }
@@ -1156,7 +1204,7 @@ export async function routeRequest(
     const holdingInterfaceId = isHoldings ? req.query.holdingInterfaceId : undefined;
     const acsResult: LedgerCallResult<unknown> = await callGetActiveContracts(
       send,
-      viewer.parties,
+      viewer.filter,
       offsetResult.offset,
       holdingInterfaceId,
     );
@@ -1168,7 +1216,7 @@ export async function routeRequest(
       if (!viewRows.ok) {
         return { status: 502, body: { reason: "node_error" } };
       }
-      const result = buildTokenHoldings(viewRows.rows, viewer.parties, { holdingInterfaceId });
+      const result = buildTokenHoldings(viewRows.rows, viewer.ownParties, { holdingInterfaceId });
       return {
         status: 200,
         body: { ...result, offset: offsetResult.offset },
@@ -1187,8 +1235,8 @@ export async function routeRequest(
     // The viewer parties must be passed so that “is it mine” is put in the value — the same reason as the direction of offers.
     // It is the final value on which core has already finished judging — even if unavailable, it is carried in a 200 as is.
     const result = isHoldings
-      ? buildTokenHoldings(entries, viewer.parties)
-      : buildTransferPreapprovals(entries, req.query.asOf as string, viewer.parties);
+      ? buildTokenHoldings(entries, viewer.ownParties)
+      : buildTransferPreapprovals(entries, req.query.asOf as string, viewer.ownParties);
     return {
       status: 200,
       body: { ...result, offset: offsetResult.offset },
@@ -1211,7 +1259,7 @@ export async function routeRequest(
     }
     const acsResult: LedgerCallResult<unknown> = await callGetActiveContracts(
       send,
-      viewer.parties,
+      viewer.filter,
       offsetResult.offset,
       interfaceId,
     );
@@ -1224,7 +1272,7 @@ export async function routeRequest(
     }
     // The viewer parties must be passed so that the direction (received or sent) is put in the value. If not passed, core
     // answers unknown, and then the screen ends up judging again — preventing that is what this argument is for.
-    const result = buildTransferOffers(envelope.rows, interfaceId, asOf, viewer.parties);
+    const result = buildTransferOffers(envelope.rows, interfaceId, asOf, viewer.ownParties);
     // It is the final value on which core has already finished judging — even if kind:"unavailable" it is not
     // turned into a 502 but carried in a 200 as is.
     return { status: 200, body: result };
@@ -1244,7 +1292,7 @@ export async function routeRequest(
     }
     const acsResult: LedgerCallResult<unknown> = await callGetActiveContracts(
       send,
-      viewer.parties,
+      viewer.filter,
       offsetResult.offset,
     );
     if (!acsResult.ok) {
@@ -1303,7 +1351,7 @@ export async function routeRequest(
     }
     const acsResult: LedgerCallResult<unknown> = await callGetActiveContracts(
       send,
-      viewer.parties,
+      viewer.filter,
       offsetResult.offset,
     );
     if (!acsResult.ok) {
@@ -1414,7 +1462,7 @@ export async function routeRequest(
     }
     const acsResult: LedgerCallResult<unknown> = await callGetActiveContracts(
       send,
-      viewer.parties,
+      viewer.filter,
       offsetResult.offset,
     );
     if (!acsResult.ok) {
@@ -1448,7 +1496,7 @@ export async function routeRequest(
   }
   const acsResult: LedgerCallResult<unknown> = await callGetActiveContracts(
     send,
-    viewer.parties,
+    viewer.filter,
     offsetResult.offset,
   );
   if (!acsResult.ok) {
@@ -1466,7 +1514,7 @@ export async function routeRequest(
     return { status: 404, body: { reason: "not_found" } };
   }
   // seenBy is **my** parties that see this contract (witnessParties = the parties among those requested that see it).
-  const detailResult = buildContractDetail(found.entry, viewer.parties);
+  const detailResult = buildContractDetail(found.entry, viewer.ownParties);
   if (!detailResult.ok) {
     return { status: 502, body: { reason: "node_error" } };
   }

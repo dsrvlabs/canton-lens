@@ -16,6 +16,20 @@ export type LedgerRequest = {
 // and only receives it as an argument. It may throw (network etc., when the target could not be reached).
 export type LedgerSend = (request: LedgerRequest) => Promise<{ status: number; body: unknown }>;
 
+// **Who a read is scoped to.** Two shapes, because the node offers two and they are not interchangeable.
+//
+//   parties:  the request names the parties to read as. This is what nearly every viewer uses, and naming a
+//             party outside the token's rights fails the whole request — so the filtering is still the
+//             node's, not ours.
+//   anyParty: the request names no party at all and reads every party on the participant. The node serves
+//             this only to a user holding CanReadAsAnyParty — "the rights of a participant's super reader",
+//             in its own words — and answers 403 to everyone else. Measured against Canton 3.5.15 on
+//             2026-09-15: the same request and the same token, 403 without the right and 200 with it.
+//
+// A viewer is one or the other, never both, which is why this is a union rather than an optional field: an
+// empty party list is not "read everything", it is a request the node refuses.
+export type LedgerPartyFilter = { anyParty: true } | { parties: readonly string[] };
+
 // Fixes in the type system that non-200 responses point to different circumstances.
 //   unauthenticated: 401 — token missing or expired
 //   forbidden:        403 — asked for something outside one's permissions

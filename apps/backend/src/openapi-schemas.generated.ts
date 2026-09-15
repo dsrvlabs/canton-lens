@@ -3712,6 +3712,17 @@ export const responseSchemas = {
                 required: ["status"],
                 additionalProperties: false,
               },
+              {
+                type: "object",
+                properties: {
+                  status: {
+                    type: "string",
+                    const: "no_own_parties",
+                  },
+                },
+                required: ["status"],
+                additionalProperties: false,
+              },
             ],
           },
           readAt: {
@@ -3923,6 +3934,17 @@ export const responseSchemas = {
           status: {
             type: "string",
             const: "no_party_found",
+          },
+        },
+        required: ["status"],
+        additionalProperties: false,
+      },
+      {
+        type: "object",
+        properties: {
+          status: {
+            type: "string",
+            const: "no_own_parties",
           },
         },
         required: ["status"],

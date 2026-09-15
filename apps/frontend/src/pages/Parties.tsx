@@ -45,7 +45,7 @@ export function Parties() {
                   <MessageRow colSpan={3}>
                     {view.scope === "own"
                       ? "No party-specific rights assigned"
-                      : "No party-specific rights assigned. See Status for instance-wide access."}
+                      : "No party-specific rights assigned — this account reads as every party on the participant."}
                   </MessageRow>
                 ) : (
                   [...view.parties]

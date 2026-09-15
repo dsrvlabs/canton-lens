@@ -183,6 +183,12 @@ function Header({ v }: { v: Tx }) {
               on event{r.eventIndexes.length === 1 ? "" : "s"} {r.eventIndexes.join(", ")}
             </span>
           ))
+        ) : v.visibility.status === "no_own_parties" ? (
+          // Reading as every party means holding none, so there is no party of yours to find on an event.
+          <Muted>
+            this account reads as every party and holds none of its own, so there is no role to
+            report
+          </Muted>
         ) : (
           <Muted>none of your parties appears on the events shown</Muted>
         )}{" "}

@@ -4,10 +4,12 @@ import {
   type LedgerPageCursor,
   withPageLimit,
 } from "./paginate.ts";
-import type { LedgerCallResult, LedgerRequest, LedgerSend } from "./types.ts";
+import { eventFormatFilters } from "./party-filter.ts";
+import type { LedgerCallResult, LedgerPartyFilter, LedgerRequest, LedgerSend } from "./types.ts";
 
 // Asks for the updates (transactions) in the recent window. For the same reason as the ACS, the party scope
-// is given only via filter.filtersByParty — Canton is the one doing the filtering.
+// is given only via the event format's filtersByParty / filtersForAnyParty — Canton is the one doing the
+// filtering.
 //
 // The point of this request is that beginExclusive is not set to 0. The participant holds only the history
 // up to pruning, and this product does not serve older history.
@@ -19,17 +21,13 @@ import type { LedgerCallResult, LedgerRequest, LedgerSend } from "./types.ts";
 // offset it sits at, and beginExclusive is itself the position to resume from. So the cursor here is a number
 // rather than an opaque string, and the rule about when the walk ends is the same one, in paginate.ts.
 export function buildGetUpdatesRequest(
-  parties: readonly string[],
+  filter: LedgerPartyFilter,
   beginExclusive: number,
   endInclusive: number,
 ): LedgerRequest {
   const wildcard = {
     identifierFilter: { WildcardFilter: { value: { includeCreatedEventBlob: false } } },
   };
-  const filtersByParty: Record<string, { cumulative: unknown[] }> = {};
-  for (const party of parties) {
-    filtersByParty[party] = { cumulative: [wildcard] };
-  }
   return {
     method: "POST",
     path: withPageLimit("/v2/updates", LEDGER_PAGE_SIZE),
@@ -39,7 +37,7 @@ export function buildGetUpdatesRequest(
       verbose: false,
       updateFormat: {
         includeTransactions: {
-          eventFormat: { filtersByParty, verbose: false },
+          eventFormat: { ...eventFormatFilters(filter, wildcard), verbose: false },
           // ACS_DELTA: events arrive as “how the active set changed” (created/archived).
           // That is exactly what the screen wants to say — a contract appeared/disappeared.
           transactionShape: "TRANSACTION_SHAPE_ACS_DELTA",
@@ -69,7 +67,7 @@ function readLastOffset(lastElement: unknown): LedgerPageCursor | undefined {
 
 export async function callGetUpdates(
   send: LedgerSend,
-  parties: readonly string[],
+  filter: LedgerPartyFilter,
   beginExclusive: number,
   endInclusive: number,
 ): Promise<LedgerCallResult<unknown>> {
@@ -77,7 +75,7 @@ export async function callGetUpdates(
     send,
     (cursor) =>
       buildGetUpdatesRequest(
-        parties,
+        filter,
         cursor === undefined ? beginExclusive : Number(cursor),
         endInclusive,
       ),

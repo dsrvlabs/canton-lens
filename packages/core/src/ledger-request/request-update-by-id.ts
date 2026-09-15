@@ -1,5 +1,6 @@
 import { interpretLedgerResponse } from "./interpret.ts";
-import type { LedgerCallResult, LedgerRequest, LedgerSend } from "./types.ts";
+import { eventFormatFilters } from "./party-filter.ts";
+import type { LedgerCallResult, LedgerPartyFilter, LedgerRequest, LedgerSend } from "./types.ts";
 
 // **Point lookup** of a single update (Transactions screen query layout, Canton 3.4 OpenAPI
 // `POST /v2/updates/update-by-id`). For the list, the ACS_DELTA stream lightly answers “what was created and what disappeared”,
@@ -8,40 +9,39 @@ import type { LedgerCallResult, LedgerRequest, LedgerSend } from "./types.ts";
 //
 // In LEDGER_EFFECTS, witnessParties are **informees**, not stakeholders (OpenAPI: create·exercise events whose
 // witnesses include the party). Its meaning differs from signatories and observers.
-export function updateFormatLedgerEffects(parties: readonly string[]): unknown {
+export function updateFormatLedgerEffects(filter: LedgerPartyFilter): unknown {
   const wildcard = {
     identifierFilter: { WildcardFilter: { value: { includeCreatedEventBlob: false } } },
   };
-  const filtersByParty: Record<string, { cumulative: unknown[] }> = {};
-  for (const party of parties) {
-    filtersByParty[party] = { cumulative: [wildcard] };
-  }
   return {
     includeTransactions: {
-      eventFormat: { filtersByParty, verbose: false },
+      eventFormat: { ...eventFormatFilters(filter, wildcard), verbose: false },
       transactionShape: "TRANSACTION_SHAPE_LEDGER_EFFECTS",
     },
   };
 }
 
 export function buildGetUpdateByIdRequest(
-  parties: readonly string[],
+  filter: LedgerPartyFilter,
   updateId: string,
 ): LedgerRequest {
   return {
     method: "POST",
     path: "/v2/updates/update-by-id",
-    body: { updateId, updateFormat: updateFormatLedgerEffects(parties) },
+    body: { updateId, updateFormat: updateFormatLedgerEffects(filter) },
   };
 }
 
 export async function callGetUpdateById(
   send: LedgerSend,
-  parties: readonly string[],
+  filter: LedgerPartyFilter,
   updateId: string,
 ): Promise<LedgerCallResult<unknown>> {
+  // **Built outside the catch.** Building a request is not sending one, so a caller-contract error here
+  // (a filter that is neither shape) must not be reported as `unreachable` — the node was never asked.
+  const request = buildGetUpdateByIdRequest(filter, updateId);
   try {
-    const { status, body } = await send(buildGetUpdateByIdRequest(parties, updateId));
+    const { status, body } = await send(request);
     return interpretLedgerResponse<unknown>(status, body);
   } catch (error) {
     return {
