@@ -19,6 +19,11 @@ export type VisibilityExplanation =
   // None of my parties appear anywhere — if this contract reached me, the material is lacking (e.g. a response without witnessParties);
   // it is not “not visible”. We say so rather than inventing anything.
   | { status: "no_party_found" }
+  // **I hold no party of my own**, so there is no list to intersect and the question does not apply. A
+  // super reader (CanReadAsAnyParty) reads as every party and is party to none of them. Distinct from
+  // no_party_found, which says a match was looked for and not found — here none could be, and reporting a
+  // failed search would read as “the material is lacking” about material that is complete.
+  | { status: "no_own_parties" }
   | { status: "unavailable"; reason: string };
 
 export function explainVisibility(
@@ -36,6 +41,8 @@ export function explainVisibility(
         : null;
   if (witnesses === null)
     return { status: "unavailable", reason: "witness_parties_not_string_array" };
+
+  if (viewerParties.length === 0) return { status: "no_own_parties" };
 
   const reasons: VisibilityReason[] = [];
   for (const party of viewerParties) {

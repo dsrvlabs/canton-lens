@@ -3933,6 +3933,17 @@ export const responseSchemas = {
         properties: {
           status: {
             type: "string",
+            const: "no_own_parties",
+          },
+        },
+        required: ["status"],
+        additionalProperties: false,
+      },
+      {
+        type: "object",
+        properties: {
+          status: {
+            type: "string",
             const: "unavailable",
           },
           reason: {

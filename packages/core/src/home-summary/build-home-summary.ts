@@ -5,7 +5,11 @@
 //
 // Three things it upholds:
 //   ① **The home of a user with zero party rights is not an empty scoreboard.** The whole card row is replaced with a single
-//      line “this token has no party rights” — cards.status = "no_party_rights".
+//      line “this token has no party rights” — cards.status = "no_party_rights". **Holding no parties is not
+//      the same as holding no rights**: a super reader (CanReadAsAnyParty) holds none of their own and reads
+//      every party on the participant, so ① is decided on the scope, not on the party count. Judging it on the
+//      count alone gave that viewer a page of “no party rights” cards directly beneath a viewer block, built
+//      from this same input, reporting their scope as instance-wide.
 //   ② If there are parties and zero contracts, it is an honest 0. A card whose lookup failed is not 0 but
 //      {status:"unavailable", reason} (distinguishes a failed lookup from nothing; see docs/development.md, Backend core rules).
 //   ③ Cards·list·sparkline are **the same snapshot** — all inputs are from the same offset, and the sparkline
@@ -144,7 +148,12 @@ export function buildHomeSummary(input: BuildHomeSummaryInput): BuildHomeSummary
     scope: input.viewer.scope,
   };
 
-  if (parties.length === 0) {
+  // A viewer reading as every party holds none of their own, so this is the scope's question, not the
+  // count's. `readsAsAnyParty` is what the router built `{ anyParty: true }` from, and it is the reason the
+  // cards below it have real numbers to show.
+  const readsAsAnyParty = parties.length === 0 && input.viewer.scope === "instance-wide";
+
+  if (parties.length === 0 && !readsAsAnyParty) {
     // ①: a single line instead of the card row. No list·graph either — the fact that there is nothing to see is the answer.
     return {
       ok: true,
@@ -166,8 +175,16 @@ export function buildHomeSummary(input: BuildHomeSummaryInput): BuildHomeSummary
       : { status: "unavailable", reason: "contracts_not_array" };
 
   // ── Pending received offers ──────────────────────────────────────────────────────
+  //
+  // **This card and the token card ask "mine", and a super reader has no answer to give.** "Received", "my
+  // turn" and "which instruments I hold" are all relative to parties the viewer holds, and this viewer holds
+  // none — they are reading as everyone. That is not zero offers and it is not a failed lookup, so it is
+  // named: `no_own_parties`. Passing the empty list on instead would have counted every offer on the
+  // participant as neither received nor sent, and silently reported 0.
   let pendingOffers: HomePendingOffersCard;
-  if (!input.offers.ok) {
+  if (readsAsAnyParty) {
+    pendingOffers = { status: "unavailable", reason: "no_own_parties" };
+  } else if (!input.offers.ok) {
     pendingOffers = { status: "unavailable", reason: input.offers.reason };
   } else {
     const built = buildTransferOffers(
@@ -232,7 +249,9 @@ export function buildHomeSummary(input: BuildHomeSummaryInput): BuildHomeSummary
 
   // ── My tokens (kind count only) ───────────────────────────────────────────────────────
   let tokens: HomeTokensCard;
-  if (!input.holdings.ok) {
+  if (readsAsAnyParty) {
+    tokens = { status: "unavailable", reason: "no_own_parties" };
+  } else if (!input.holdings.ok) {
     tokens = { status: "unavailable", reason: input.holdings.reason };
   } else {
     const built = buildTokenKinds(

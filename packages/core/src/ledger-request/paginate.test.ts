@@ -10,7 +10,7 @@ import type { LedgerRequest, LedgerSend } from "./types.ts";
 // up here. The node's answers are therefore stubbed: the 413 body is the one a real participant gave, and the
 // page shapes are the ones Canton 3.5.15 gave when the same walk was run against it with `limit` set small.
 
-const PARTIES = ["alice::1220ab"];
+const PARTIES = { parties: ["alice::1220ab"] } as const;
 const OFFSET = 158;
 
 type Answer = { status: number; body: unknown };

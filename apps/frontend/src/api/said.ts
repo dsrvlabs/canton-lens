@@ -10,6 +10,8 @@ export const SAID: Record<string, string> = {
   forbidden: "Outside this user's rights",
   no_party_rights:
     "This account has no party rights on this participant, so there is nothing to show",
+  no_own_parties:
+    "This account reads as every party on the participant and holds none of its own, so there is no 'mine' to report here",
   not_found:
     "No such thing — or it is outside what you can see. Archived contracts are not in this view",
   node_error: "The node refused",
