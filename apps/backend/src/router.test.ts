@@ -262,7 +262,19 @@ test("a right whose payload is not the shape the node sends does not grant insta
   // `CanReadAsAnyParty` carries a value object, like CanReadAs and CanActAs. Accepting the bare key meant
   // a malformed rights response could make this layer ask on behalf of a viewer whose rights never said so.
   // Both levels are covered: the primitives, and the shapes that pass a check of the outer level alone.
-  for (const malformed of [null, false, "yes", 1, {}, [], { value: null }, { value: "x" }]) {
+  for (const malformed of [
+    null,
+    false,
+    "yes",
+    1,
+    {},
+    [],
+    { value: null },
+    { value: "x" },
+    // An array is a non-null object, so both levels are checked for it by name.
+    { value: [] },
+    [{ value: {} }],
+  ]) {
     const { response } = await askAs({ kind: { CanReadAsAnyParty: malformed } }, "/api/contracts");
     assert.equal(response.status, 403, `${JSON.stringify(malformed)} was read as a right`);
     assert.deepEqual(response.body, { reason: "no_party_rights" });

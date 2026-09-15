@@ -110,7 +110,11 @@ export function buildViewerParties(user: unknown, rights: unknown): BuildViewerP
     if (
       !matchedPartyKind &&
       isRecord(kind.CanReadAsAnyParty) &&
-      isRecord(kind.CanReadAsAnyParty.value)
+      // isRecord is "a non-null object", which an array is. The node sends `{ value: {} }` here, so an
+      // array at either level is not the shape and must not read as the right.
+      !Array.isArray(kind.CanReadAsAnyParty) &&
+      isRecord(kind.CanReadAsAnyParty.value) &&
+      !Array.isArray(kind.CanReadAsAnyParty.value)
     ) {
       instanceWide = true;
     }
