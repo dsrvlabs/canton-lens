@@ -9,6 +9,11 @@ export type RouterRequest = {
   path: string;
   query: Record<string, string>;
   ledgerToken: string | null;
+  // Parsed JSON body, present only on the one route that takes one (POST /api/exercise; see
+  // docs/ledger-writes.md). `unknown` rather than a named shape because the body is caller-supplied
+  // and is checked at the route, alongside every other caller-supplied value — a typed field here
+  // would say it had already been judged.
+  body?: unknown;
 };
 
 export type RouterResponse = {

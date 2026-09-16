@@ -43,6 +43,13 @@ Both `CanReadAs` and `CanActAs` allow ledger reads for a party. `CanActAs` also 
 submission on that party's behalf. Prefer `CanReadAs` for view-only deployments and grant
 `CanActAs` only when another workflow requires it.
 
+That advice is load-bearing now that the Explorer has one write path. A `CanReadAs`-only deployment
+cannot submit anything no matter how it is configured, because there is no command such a token is
+allowed to run. See [Ledger writes](ledger-writes.md) for the rest: writes are off unless
+`LEDGER_WRITES=enabled` is named, and shared-identity cannot name it — a shared credential would let
+anyone who reaches the Backend commit transactions as the shared party, with the participant's
+record naming the service identity rather than whoever asked.
+
 ## Repository rules
 
 - Do not commit or log secrets, tokens, private ledger data, or real private endpoints.

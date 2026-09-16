@@ -2750,6 +2750,31 @@ export const responseSchemas = {
     description:
       "What the received ledger token says about itself — issuer host, audience, expiry. Decoded only, never verified here (the participant already did that), and the token itself is never carried in the response. null when it cannot be decoded.",
   },
+  SubmittedCommandResponse: {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      updateId: {
+        type: "string",
+        description: "The participant's update id — what the Transactions screen can be opened on.",
+      },
+      completionOffset: {
+        type: ["number", "null"],
+        description:
+          "null when the participant returned a completion without one; never 0 standing in for absent.",
+      },
+      readAt: {
+        type: "string",
+        description:
+          "The time this response was read (RFC 3339). Stamped on every 200 response not by the router (router.ts) but by the boot file (live/build-app.mjs) that owns the socket — the router does not call the clock.",
+        pattern:
+          "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$",
+      },
+    },
+    required: ["completionOffset", "readAt", "updateId"],
+    description:
+      'A command the participant committed. Its security design is docs/ledger-writes.md.\n\nThere is no "accepted" or "pending" shape here on purpose: this route answers only once the participant has returned a completion, so a 200 means the transaction committed. A response carrying no update id is reported as a 502 rather than shaped into a success with a blank field.',
+  },
   TemplateDefinition: {
     anyOf: [
       {

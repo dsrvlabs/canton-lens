@@ -1,5 +1,6 @@
 // Pure router: it does not start a server or open a socket. It goes as far as wiring routes to core functions and
 // mapping failures to status codes. Judgment (visibility·status-code mapping) is not reimplemented.
+import { randomUUID } from "node:crypto";
 import type {
   HomeSource,
   LedgerCallResult,
@@ -53,9 +54,11 @@ import {
   toRawCreatedEvents,
   toUpdateEntries,
 } from "./envelope.ts";
+import { handleExercise } from "./exercise-route.ts";
 import { ledgerFailureToHttp } from "./ledger-failure-to-http.ts";
 import { withAuth } from "./ledger-send-with-token.ts";
 import type { RouterRequest, RouterResponse } from "./router-types.ts";
+import type { LedgerWriteConfig } from "./write-config.ts";
 
 const CONTRACT_DETAIL_PATH = /^\/api\/contracts\/([^/]+)$/;
 const PARTY_PATH = /^\/api\/party\/([^/]+)$/;
@@ -335,8 +338,22 @@ async function readHomeAcs<T>(
 
 export async function routeRequest(
   req: RouterRequest,
-  deps: { send: LedgerSend },
+  deps: { send: LedgerSend; writes?: LedgerWriteConfig },
 ): Promise<RouterResponse> {
+  // **The one route that is not a GET.** It is dispatched before the method check rather than
+  // folded into it, so that everything below this point stays what it has always been: a read. Its
+  // gate, its body checking and its failure mapping live in exercise-route.ts, and a deployment that
+  // passes no write config is refused there — `writes` is optional here precisely so that an
+  // existing caller of routeRequest keeps the old behaviour without being changed.
+  if (req.path === "/api/exercise") {
+    if (req.method !== "POST") return { status: 405, body: { reason: "method_not_allowed" } };
+    return handleExercise(req, {
+      send: deps.send,
+      writes: deps.writes ?? { writes: "refused" },
+      loadSchema,
+      newCommandId: () => randomUUID(),
+    });
+  }
   if (req.method !== "GET") {
     return { status: 405, body: { reason: "method_not_allowed" } };
   }

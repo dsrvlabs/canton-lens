@@ -4,7 +4,11 @@
 //   1. Zero runtime dependencies — nothing is imported beyond the `node:` builtins
 //   2. A failed lookup is never returned as 0·[]·null
 //   3. Visibility judgment happens in a single chokepoint, in one place only
-//   4. No write path is created
+//   4. Exactly one write path exists — exercising a choice — and it is built, not sent, here.
+//      Its security design is docs/ledger-writes.md and the Backend gate that decides whether it may
+//      be used at all is apps/backend/src/write-config.ts. This layer judges only whether a command
+//      is well-formed; it holds no credential and reaches no participant. Adding a second write
+//      means extending that document first, as this one did.
 //
 // Relative imports keep the extension as is: `export * from "./identifier.ts";`
 
@@ -82,6 +86,13 @@ export { typeHead, typeText } from "./daml-lf/type-text.ts";
 export type { SchemaLookup, TypedField, TypedValue } from "./daml-lf/typed-payload.ts";
 export { typeRecordFields, typeValue } from "./daml-lf/typed-payload.ts";
 export type {
+  BuildExerciseResult,
+  ExerciseCommand,
+  ExerciseInput,
+  ExerciseRejection,
+} from "./exercise/build-exercise.ts";
+export { buildExercise } from "./exercise/build-exercise.ts";
+export type {
   TimeBucketSource,
   UpdateTimeDistribution,
 } from "./home-summary/bucket-updates-by-time.ts";
@@ -133,6 +144,11 @@ export { buildGetVersionRequest, callGetVersion } from "./ledger-request/request
 export { buildGetLedgerEndRequest, callGetLedgerEnd } from "./ledger-request/request-ledger-end.ts";
 export { buildGetPackageRequest, callGetPackage } from "./ledger-request/request-package.ts";
 export { buildListPackagesRequest, callListPackages } from "./ledger-request/request-packages.ts";
+export type { SubmittedCommand } from "./ledger-request/request-submit-and-wait.ts";
+export {
+  buildSubmitAndWaitRequest,
+  callSubmitAndWait,
+} from "./ledger-request/request-submit-and-wait.ts";
 export {
   buildGetUpdateByIdRequest,
   callGetUpdateById,

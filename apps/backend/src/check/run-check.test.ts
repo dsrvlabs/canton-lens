@@ -164,8 +164,17 @@ test("every operation openapi declares is in the check table, and every 200 sche
   assert.deepEqual(coverage.withoutValidator, [], "no 200 schema resolves through ajv for these");
   assert.equal(
     coverage.openApiOperations.length,
-    17,
+    18,
     "the number of operations changed — if it grew, check that the new one is in the table",
+  );
+  // **The write is named here rather than counted silently.** describeCoverage excludes POST from the
+  // table requirement because asking a write commits a transaction (see the comment there), and an
+  // exclusion nobody asserts on is an exclusion that can widen without anyone noticing. This says
+  // exactly which operation is out, so a second one arriving fails here.
+  assert.deepEqual(
+    coverage.openApiOperations.filter((name) => name.startsWith("POST ")),
+    ["POST /api/exercise"],
+    "a write that is not the documented one has been declared — see docs/ledger-writes.md",
   );
 });
 

@@ -22,23 +22,29 @@ export function sharedIdentityOpenApi(document: typeof openApiDocument) {
         "Shared Identity Mode does not authenticate individual users. Every request is executed using one configured Canton service identity. The operator is responsible for controlling access to the Explorer. Incoming Authorization headers are rejected. Successful response schemas are shared with caller-bearer mode.",
     },
     paths: Object.fromEntries(
-      Object.entries(document.paths).map(([path, item]) => {
-        const responses: Record<string, unknown> = { ...item.get.responses };
-        delete responses["401"];
-        responses["409"] = failure(
-          "The gateway must consume or strip its Authorization header before forwarding to Explorer.",
-          ["shared_identity_authorization_not_allowed"],
-        );
-        responses["503"] = failure(
-          "The configured service credential is unavailable or Canton rejected it. Contact the operator; no user login or automatic retry.",
-          ["shared_identity_unavailable"],
-        );
-        responses["403"] = failure(
-          "The configured Canton service identity has insufficient rights.",
-          ["shared_identity_forbidden"],
-        );
-        return [path, { ...item, get: { ...item.get, responses } }];
-      }),
+      Object.entries(document.paths)
+        // **A path with no GET is dropped rather than annotated.** The only one is /api/exercise, and
+        // shared-identity cannot submit commands at all — the configuration that would ask for it
+        // fails startup (docs/ledger-writes.md). Leaving it in with shared-identity's response set
+        // would document a route this profile never serves.
+        .flatMap(([path, item]) => {
+          if (!("get" in item)) return [];
+          const responses: Record<string, unknown> = { ...item.get.responses };
+          delete responses["401"];
+          responses["409"] = failure(
+            "The gateway must consume or strip its Authorization header before forwarding to Explorer.",
+            ["shared_identity_authorization_not_allowed"],
+          );
+          responses["503"] = failure(
+            "The configured service credential is unavailable or Canton rejected it. Contact the operator; no user login or automatic retry.",
+            ["shared_identity_unavailable"],
+          );
+          responses["403"] = failure(
+            "The configured Canton service identity has insufficient rights.",
+            ["shared_identity_forbidden"],
+          );
+          return [[path, { ...item, get: { ...item.get, responses } }] as const];
+        }),
     ),
   };
 }
@@ -144,7 +150,9 @@ export const openApiDocument = {
     title: "Canton Lens API",
     version: "0.1.0",
     description:
-      "The HTTP surface of the explorer that reads a Canton participant's private ledger. Read-only. Visibility is enforced not by " +
+      "The HTTP surface of the explorer that reads a Canton participant's private ledger. Read-only except for one path, " +
+      "POST /api/exercise, which a deployment must open explicitly and which shared-identity cannot open at all " +
+      "(docs/ledger-writes.md). Visibility is enforced not by " +
       "this server but by the participant — the ledger token carried in the request is passed to the ledger as is, so the answer is by definition Canton's answer. " +
       "Every 200 body has readAt (RFC 3339, the time this server built the response) — the response schemas\n" +
       "enforce that shape with a pattern, not merely describe it.",
@@ -162,6 +170,96 @@ export const openApiDocument = {
           ),
           "401": unauthenticatedResponse,
           ...ledgerFailureResponses,
+        },
+      },
+    },
+    // **The one path that is not a GET.** Its security design is docs/ledger-writes.md, and the
+    // defaults there are what this contract documents: a deployment that has not set
+    // LEDGER_WRITES=enabled answers 403 to every caller, and shared-identity cannot set it at all.
+    // So a reader of this document should expect 403 unless the deployment says otherwise.
+    "/api/exercise": {
+      post: {
+        operationId: "exerciseChoice",
+        summary: "Exercise a choice on a visible contract",
+        description:
+          "Submits one ExerciseCommand through the participant's submit-and-wait endpoint, acting as the named " +
+          "parties. Refused with 403 writes_not_available unless the deployment set LEDGER_WRITES=enabled, which " +
+          "is available only under LEDGER_AUTH_MODE=caller-bearer. The argument is checked against the package " +
+          "schema before submission — that check names a bad field rather than leaving a Canton error to be read " +
+          "back, and it is not a permission check: the participant decides whether the caller may act, whether " +
+          "the contract is still active, and whether the template's ensure clause holds.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                additionalProperties: false,
+                required: ["contractId", "templateId", "choice", "argument", "actAs"],
+                properties: {
+                  contractId: { type: "string", minLength: 1 },
+                  templateId: {
+                    type: "string",
+                    description:
+                      "`<packageId>:<Module>:<Entity>`, as the contract detail reports it.",
+                  },
+                  choice: { type: "string", minLength: 1 },
+                  argument: {
+                    type: "object",
+                    description:
+                      "Field name to value. An argument-less choice sends {}. Int64 and Numeric are sent as " +
+                      "strings so that a value wider than a double survives the round trip.",
+                  },
+                  actAs: {
+                    type: "array",
+                    minItems: 1,
+                    items: { type: "string" },
+                    description:
+                      "Parties the caller already holds CanActAs for. This layer checks the shape only; the " +
+                      "participant answers 403 if the token does not carry the right.",
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          "200": ok(
+            "SubmittedCommandResponse",
+            "The transaction committed. updateId is the participant's, and is what the Transactions screen can be " +
+              "opened on. A 200 is never sent on the strength of a status code alone — a response carrying no " +
+              "update id is reported as 502.",
+          ),
+          "400": failure(
+            "invalid_body — the body is not the shape above. invalid_template_id — not `<package>:<Module>:<Entity>`. " +
+              "invalid_argument — the argument does not match the choice's schema; the answer carries a rejection " +
+              "naming the field.",
+            ["invalid_body", "invalid_template_id", "invalid_argument"],
+          ),
+          "401": unauthenticatedResponse,
+          "403": failure(
+            "writes_not_available — this deployment does not submit commands (LEDGER_WRITES unset, or " +
+              "shared-identity). forbidden — the participant answered that the token has no right to act as the " +
+              "named parties.",
+            ["writes_not_available", "forbidden"],
+          ),
+          "404": failure("unknown_template — the package was read but carries no such template.", [
+            "unknown_template",
+          ]),
+          "405": failure("method_not_allowed — this path takes POST.", ["method_not_allowed"]),
+          "413": failure("body_too_large — the body exceeds this route's cap.", ["body_too_large"]),
+          "502": failure(
+            "node_error — the participant answered with an error, or returned a 200 carrying no update id. " +
+              "schema_unavailable — the package could not be decoded, so the argument could not be checked; the " +
+              "command is refused rather than submitted unchecked.",
+            ["node_error", "schema_unavailable"],
+          ),
+          "504": failure(
+            "unreachable — the participant could not be reached. For a write this does not mean the command did " +
+              "not commit: the request may have arrived and the response been lost. The Transactions screen is " +
+              "where the outcome is visible.",
+            ["unreachable"],
+          ),
         },
       },
     },

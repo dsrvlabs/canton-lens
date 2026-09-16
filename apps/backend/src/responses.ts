@@ -81,6 +81,22 @@ export type SessionResponse =
       Stamped & { parties: SessionParty[]; token: SessionTokenClaims })
   | (ViewerPartiesUnavailable & Stamped & { token: SessionTokenClaims });
 
+// ── POST /api/exercise ───────────────────────────────────────────────────────────
+
+/**
+ * A command the participant committed. Its security design is docs/ledger-writes.md.
+ *
+ * There is no "accepted" or "pending" shape here on purpose: this route answers only once the
+ * participant has returned a completion, so a 200 means the transaction committed. A response
+ * carrying no update id is reported as a 502 rather than shaped into a success with a blank field.
+ */
+export type SubmittedCommandResponse = Stamped & {
+  /** The participant's update id — what the Transactions screen can be opened on. */
+  updateId: string;
+  /** null when the participant returned a completion without one; never 0 standing in for absent. */
+  completionOffset: number | null;
+};
+
 // ── GET /api/contracts ───────────────────────────────────────────────────────────
 
 export type ContractsResponse = ContractListPage & Stamped & WithOffset;

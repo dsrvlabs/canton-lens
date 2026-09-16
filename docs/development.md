@@ -36,7 +36,9 @@ Backend requires `apps/backend/.env`. Vite forwards `/api/*` and `/openapi.json`
 ## Contributing rules
 
 - Keep `packages/core` free of runtime dependencies.
-- Do not add ledger writes without an explicit security design.
+- Do not add ledger writes without an explicit security design. One exists — [Ledger
+  writes](ledger-writes.md), covering `POST /api/exercise` and nothing else. A second write extends
+  that document first.
 - Preserve unavailable and denied states; do not turn failures into `0`, `[]`, or `null`.
 - Keep visibility decisions at one boundary rather than repeating them in screens or routes.
 - Retain `.ts` extensions in relative TypeScript imports.

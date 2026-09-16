@@ -54,6 +54,10 @@ export function buildApp({
   basePath = "",
   publicEntryUrl,
   openApiDocument = bundledOpenApiDocument,
+  // Whether this deployment may submit commands. Default refused, so an existing caller of buildApp —
+  // every test in this repository among them — keeps the read-only behaviour it has today.
+  // docs/ledger-writes.md; the value is produced by readLedgerWriteConfig and passed in by serve.mjs.
+  writes = { writes: "refused" },
   log,
 } = {}) {
   if (typeof send !== "function") {
@@ -74,7 +78,7 @@ export function buildApp({
   // Map method · raw path · query · authorization under the explicitly selected credential profile.
   // This boundary can acquire a service token; it is not a pure function. It does not touch the reply
   // object, so both the Fastify handler and `onBadUrl` (where there is no reply) use this.
-  async function handle({ method, pathname, search, authorization }) {
+  async function handle({ method, pathname, search, authorization, body: rawBody }) {
     try {
       if (basePath) {
         if (!pathname.startsWith(`${basePath}/`)) return json(404, { reason: "no_such_route" });
@@ -105,8 +109,9 @@ export function buildApp({
             path: pathname,
             query: Object.fromEntries(new URLSearchParams(search)),
             ledgerToken: service ? "" : authorization?.startsWith("Bearer ") ? authorization.slice(7) : null,
+            body: rawBody,
           },
-          { send: serviceCall?.send ?? ledgerSend },
+          { send: serviceCall?.send ?? ledgerSend, writes },
         );
         const failure = serviceCall?.failure();
         if (failure) return json(failure.status, failure.body);
@@ -127,7 +132,10 @@ export function buildApp({
         // The router decides the 405 (being a pure function, it knows nothing about headers) and this
         // place adds the header.
         if (response.status === 405) {
-          return { status: 405, headers: { ...JSON_HEADERS, allow: "GET" }, body: JSON.stringify(body) };
+          // One path takes POST and nothing else (docs/ledger-writes.md); every other path is still
+          // GET-only. Allow has to name the method *that path* accepts, not the server's general habit.
+          const allow = pathname === "/api/exercise" ? "POST" : "GET";
+          return { status: 405, headers: { ...JSON_HEADERS, allow }, body: JSON.stringify(body) };
         }
         return json(response.status, body);
       }
@@ -217,15 +225,54 @@ export function buildApp({
     app.addHttpMethod(method, { hasBody: false, overrideExisting: true });
   }
 
+  // **The one request whose body is read.** Every method stays registered with `hasBody: false`
+  // above, so Fastify does not parse anything and the property the timeout note relies on — this
+  // server answers without reading the request body — still holds for every path but this one. The
+  // stream is drained here, under an explicit cap, rather than by a body parser that would apply to
+  // all of them.
+  //
+  // The cap is small on purpose: a choice argument is a record of scalars. A body larger than this is
+  // not an argument this route can submit, and reading it to find that out is the slot-occupying
+  // behaviour the timeouts were set against. Over the cap the socket is not drained further — the
+  // answer goes out and the connection closes.
+  const MAX_EXERCISE_BODY_BYTES = 64 * 1024;
+  const readJsonBody = async (raw) => {
+    let size = 0;
+    const chunks = [];
+    for await (const chunk of raw) {
+      size += chunk.length;
+      if (size > MAX_EXERCISE_BODY_BYTES) return { tooLarge: true };
+      chunks.push(chunk);
+    }
+    if (size === 0) return { value: undefined };
+    try {
+      return { value: JSON.parse(Buffer.concat(chunks).toString("utf8")) };
+    } catch {
+      // Unparseable is handed on as undefined rather than as its own status: the route already
+      // answers `invalid_body` for a body it cannot use, and a separate code here would tell a
+      // caller of a write-refused deployment that its body was read at all.
+      return { value: undefined };
+    }
+  };
+
   const dispatch = async (request, reply) => {
     const { pathname, search } = split(request.raw.url);
-    const { status, headers, body } = await handle({
+    let body;
+    if (request.method === "POST" && pathname === `${basePath}/api/exercise`) {
+      const read = await readJsonBody(request.raw);
+      if (read.tooLarge) {
+        return reply.code(413).headers(JSON_HEADERS).send(JSON.stringify({ reason: "body_too_large" }));
+      }
+      body = read.value;
+    }
+    const { status, headers, body: out } = await handle({
       method: request.method,
       pathname,
       search,
       authorization: request.headers.authorization,
+      body,
     });
-    return reply.code(status).headers(headers).send(body);
+    return reply.code(status).headers(headers).send(out);
   };
 
   // These two are the only routes. What splits the paths is `handle`.

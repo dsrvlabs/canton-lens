@@ -10,6 +10,7 @@
 // credential and an in-memory Client Credentials token provider. Neither profile logs in end users here.
 import { buildApp } from "./build-app.mjs";
 import { assertServiceLedgerBase, readLedgerAuthConfig } from "../auth/config.ts";
+import { readLedgerWriteConfig } from "../write-config.ts";
 
 let ledgerAuth;
 try {
@@ -111,7 +112,24 @@ async function send(request) {
   }
 }
 
-const app = buildApp({ send, ledgerAuth, basePath: BASE_PATH, publicEntryUrl: PUBLIC_ENTRY_URL });
+// Read after ledgerAuth, because the one combination it refuses is a function of both: writes are
+// never available under shared-identity, and asking for them there fails startup rather than
+// starting a deployment whose configuration and behaviour disagree. See docs/ledger-writes.md.
+let writes;
+try {
+  writes = readLedgerWriteConfig(process.env, ledgerAuth);
+} catch (error) {
+  console.error(`[explorer-api] startup refused — ${error.message}`);
+  process.exit(1);
+}
+
+const app = buildApp({
+  send,
+  ledgerAuth,
+  writes,
+  basePath: BASE_PATH,
+  publicEntryUrl: PUBLIC_ENTRY_URL,
+});
 
 try {
   await app.listen({ port: PORT, host: HOST });
@@ -120,7 +138,7 @@ try {
   process.exit(1);
 }
 
-console.log(`[explorer-api] ${HOST}:${PORT} — ledger auth ${ledgerAuth.mode}`);
+console.log(`[explorer-api] ${HOST}:${PORT} — ledger auth ${ledgerAuth.mode}, writes ${writes.writes}`);
 if (ledgerAuth.mode === "shared-identity") {
   console.log("[explorer-api] Shared Identity Mode does not authenticate individual users. Every request is executed using one configured Canton service identity. The operator is responsible for controlling access to the Explorer.");
 }

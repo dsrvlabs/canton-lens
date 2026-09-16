@@ -131,7 +131,16 @@ export function describeCoverage(): {
   return {
     openApiOperations: names,
     checkedOperations: [...covered],
-    missingFromCheck: names.filter((n) => !covered.has(n)),
+    // **Writes are excluded from the requirement, not forgotten.** This check runs against a live
+    // participant and judges an answer by asking for it; a write cannot be judged that way, because
+    // asking commits a transaction. A table entry for POST /api/exercise would make every run of the
+    // check submit a command to whatever ledger it was pointed at — including the real one.
+    //
+    // So the guard covers reads only, and the write path is held to the unit tests in
+    // exercise-route.test.ts and build-exercise.test.ts instead. If a second write is ever added,
+    // this exclusion is the line that decides whether it is verified anywhere — extend those tests
+    // with it, as docs/ledger-writes.md requires of any new write.
+    missingFromCheck: names.filter((n) => !covered.has(n) && !n.startsWith("POST ")),
     withoutValidator: names.filter((n) => !validators.has(n)),
   };
 }
