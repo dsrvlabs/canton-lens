@@ -109,6 +109,14 @@ export type ContractSchema =
   | { status: "unavailable"; reason: string };
 export type ContractResponse = ContractDetailView & Stamped & { schema: ContractSchema };
 
+// POST /api/exercise — the one response that follows a command rather than a query. The original is
+// SubmittedCommandResponse in apps/backend/src/responses.ts; there is no "pending" shape, because the
+// route answers only once the participant has returned a completion (docs/ledger-writes.md).
+export type SubmittedCommandResponse = Stamped & {
+  updateId: string;
+  completionOffset: number | null;
+};
+
 export type PartyResponse = (
   | SearchPartyInActiveContractsFound
   | SearchPartyInActiveContractsOutOfScope

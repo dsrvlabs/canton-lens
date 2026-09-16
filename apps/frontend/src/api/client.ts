@@ -31,17 +31,35 @@ export function safeHttpUrl(value: unknown): string | null {
   }
 }
 
-export async function apiResponse<T>(path: string): Promise<{ body: T; response: Response }> {
+export async function apiResponse<T>(
+  path: string,
+  // Present only for POST /api/exercise, the one path that takes a body (docs/ledger-writes.md).
+  // Every other call leaves it out and stays the GET it has always been.
+  send?: { method: "POST"; body: unknown },
+): Promise<{ body: T; response: Response }> {
   const auth = getBrowserOidcAuth();
+  // **A read goes out exactly as it did before.** Not `fetch(url, {})` — the institution-bff profile
+  // is a same-origin GET with no init at all, and a caller that adds an empty one has changed the
+  // call. The body-carrying shape is built only when there is a body.
+  const post = send
+    ? {
+        method: send.method,
+        body: JSON.stringify(send.body),
+        headers: { "content-type": "application/json" },
+      }
+    : null;
   const response = auth
-    ? await auth.request(under(path))
+    ? await auth.request(under(path), send)
     : isSharedIdentity()
       ? await fetch(under(path), {
+          ...(post ?? {}),
           credentials: "same-origin",
           cache: "no-store",
           redirect: "error",
         })
-      : await fetch(under(path));
+      : post
+        ? await fetch(under(path), post)
+        : await fetch(under(path));
   const body: unknown = await response.json().catch(() => null);
   if (!response.ok) {
     const b = (body ?? {}) as {
@@ -72,6 +90,12 @@ export async function apiResponse<T>(path: string): Promise<{ body: T; response:
 
 export async function api<T>(path: string): Promise<T> {
   return (await apiResponse<T>(path)).body;
+}
+
+// The one call that asks the participant to commit something. Kept as its own name rather than a
+// flag on `api` so that a reader of a call site can see which of the two it is.
+export async function apiSubmit<T>(path: string, body: unknown): Promise<T> {
+  return (await apiResponse<T>(path, { method: "POST", body })).body;
 }
 
 // The one line to show a person from an error object.

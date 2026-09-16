@@ -21,6 +21,7 @@ import { fmtOffset } from "../format/format.ts";
 import { Choices, TypedFields } from "../format/typed.tsx";
 import { href } from "../route/hash.ts";
 import { useSession } from "../session/SessionContext.tsx";
+import { ExercisePanel } from "./ExercisePanel.tsx";
 
 export function ContractDetail({ contractId }: { contractId: string }) {
   const { api, loading, generation, fail } = useSession();
@@ -77,7 +78,7 @@ export function ContractDetail({ contractId }: { contractId: string }) {
           <dt>Package</dt>
           <dd>
             <b>{v.packageName}</b>{" "}
-            <Disclosure summary="hash" style={{ display: "inline-block", marginLeft: 8 }}>
+            <Disclosure summary="hash" className="clds-disclosure-inline">
               <Chip value={v.packageId} n={20} />
             </Disclosure>{" "}
             {sc.status === "ok" && sc.packageVersion ? (
@@ -230,8 +231,16 @@ export function ContractDetail({ contractId }: { contractId: string }) {
                 <Choices choices={sc.choices} />
                 <p className="clds-muted" style={{ margin: "6px 0 0" }}>
                   Definitions read from the package on the participant (Daml-LF {sc.lfVersion ?? ""}
-                  ). Read-only — this explorer never exercises a choice.
+                  ).
                 </p>
+                <Disclosure summary="Exercise a choice">
+                  <ExercisePanel
+                    contractId={contractId}
+                    templateId={v.templateId}
+                    choices={sc.choices}
+                    signatories={v.signatories}
+                  />
+                </Disclosure>
               </>
             ) : (
               <Muted>

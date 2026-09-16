@@ -327,7 +327,11 @@ export class BrowserOidcAuth {
     );
   }
 
-  async request(path: string): Promise<Response> {
+  // `send` carries the method and body of the one path that takes one (POST /api/exercise). It is a
+  // narrow shape rather than a RequestInit on purpose: everything else about the request — the
+  // credential, the origin check, `credentials: "omit"`, the no-store and no-referrer policy — stays
+  // decided here, where the token is, and cannot be overridden by a caller.
+  async request(path: string, send?: { method: "POST"; body: unknown }): Promise<Response> {
     const base = new URL(".", this.config.redirectUri);
     const target = new URL(path, base);
     if (
@@ -341,7 +345,11 @@ export class BrowserOidcAuth {
     if (!this.token || !this.checkExpiry()) throw new Error("Sign in required");
     const revision = this.revision;
     const response = await this.browser.fetch(target.href, {
-      headers: { Authorization: `Bearer ${this.token.value}` },
+      headers: {
+        Authorization: `Bearer ${this.token.value}`,
+        ...(send ? { "content-type": "application/json" } : {}),
+      },
+      ...(send ? { method: send.method, body: JSON.stringify(send.body) } : {}),
       credentials: "omit",
       cache: "no-store",
       redirect: "error",

@@ -127,7 +127,12 @@
   overflow-x: auto;
 }
 pre.clds-scroll {
-  white-space: pre-wrap;
+  /* **`pre`, not `pre-wrap`.** The rule above says a block that spills sideways scrolls inside its own
+     slot, and `pre-wrap` cancelled exactly that: a wrapping block never overflows, so `overflow-x`
+     never engaged and the text wrapped instead. On JSON that is worse than scrolling, because the
+     break lands mid-token — a party id split across two lines cannot be read or selected as one
+     value, and the block's height jumps with the width of the window. */
+  white-space: pre;
   margin: 0;
 }
 
