@@ -75,7 +75,9 @@ test("stands up the recorded ledger and passes all three levels (three people)",
   assert.deepEqual(
     misses,
     [],
-    `${misses.length} question(s) are not on the tape — if the code changed, re-record against a live participant:\n  ${misses.slice(0, 5).join("\n  ")}`,
+    `${misses.length} question(s) are not on the tape — our code is asking something different from when it\n` +
+      `was recorded. If the code is right this is not your mistake: a maintainer re-records the tape against a\n` +
+      `live participant. Say in your pull request that the tape needs re-recording.\n  ${misses.slice(0, 5).join("\n  ")}`,
   );
   assert.ok(report.ok, `\n${formatReport(report)}`);
   assert.equal(

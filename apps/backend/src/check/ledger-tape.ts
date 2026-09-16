@@ -138,9 +138,17 @@ export function replaySend(
     const entry = byKey.get(key);
     if (entry === undefined) {
       misses?.push(key);
+      // **Who fixes this, in the message.** A contributor seeing red here has usually done nothing wrong:
+      // changing what we ask the node is a normal change, and it makes the tape stale by design. What they
+      // cannot do is re-record — that needs a live participant, and updating the tape is a maintainer's job
+      // for the same reason it is elsewhere (a recorded file is hard to review, so it is a place to hide
+      // things). The check still fails rather than skipping: a question never put to a real node is exactly
+      // what must not be merged unseen.
       throw new Error(
         `This question is not on the tape — ${key}\n` +
-          `  our code is asking something different from when it was recorded. If the code is right, re-record against a live participant.`,
+          `  our code is asking something different from when it was recorded.\n` +
+          `  If the code is right this is not your mistake — a maintainer re-records the tape against a\n` +
+          `  live participant. Say in your pull request that the tape needs re-recording.`,
       );
     }
     if (entry.bytes !== undefined) {
