@@ -7,6 +7,8 @@
 // come in at the top (pages/Live.tsx). It is a switch in the toolbar and a value in the address, so a
 // screen left open on a wall bookmarks `#/transactions?live=1`. While it is on, the filters and the pages
 // step aside — a list that moves has no page to stand on.
+
+import { buildTransactionsSheetRows, buildXlsx, transactionsFileName } from "@canton-lens/core";
 import {
   Button,
   MessageRow,
@@ -24,6 +26,7 @@ import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { messageOf } from "../api/client.ts";
 import type { UpdatesResponse } from "../api/types.ts";
 import { PartyChip } from "../format/chips.tsx";
+import { downloadFile } from "../format/download.ts";
 import { UpdateRows } from "../format/rows.tsx";
 import {
   hashQuery,
@@ -168,6 +171,18 @@ export function TransactionsView({
   const older = u !== null && u.nextBefore !== null && u.nextBefore !== undefined;
   const first = rows[0];
   const last = rows[rows.length - 1];
+  // **What is on the page, not what the window holds.** The screen pages through the window 25 at a
+  // time, and a button that quietly fetched the rest would make one click issue an unknown number of
+  // requests and export rows the person never saw. The count is on the button so what it will write
+  // is not a guess. The instant is read here, at the click — the file is named after when it was
+  // taken, because two exports of "recent" minutes apart are different documents.
+  const download = () => {
+    const at = new Date();
+    downloadFile(
+      buildXlsx({ name: "Transactions", rows: buildTransactionsSheetRows(rows) }, at),
+      transactionsFileName(at),
+    );
+  };
 
   return (
     <div id="view-transactions">
@@ -306,6 +321,11 @@ export function TransactionsView({
                   }}
                 >
                   Older
+                </Button>
+              ) : null}
+              {rows.length > 0 ? (
+                <Button size="xs" id="tx-download" onClick={download}>
+                  Download {rows.length} {rows.length === 1 ? "update" : "updates"} (.xlsx)
                 </Button>
               ) : null}
               <span>
