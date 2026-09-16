@@ -126,6 +126,11 @@
 .clds-scroll {
   overflow-x: auto;
 }
+/* **A block of code reads as one object.** Every `pre.clds-scroll` in the product holds JSON, and bare
+   on the page it ran together with the prose around it — where the payload ended and the next row began
+   had to be worked out from the text. A field-coloured ground inside a hairline says it, and the ground
+   is also what makes the sideways scroll legible: without an edge, a line running past the right margin
+   looks like a line that was cut off. */
 pre.clds-scroll {
   /* **`pre`, not `pre-wrap`.** The rule above says a block that spills sideways scrolls inside its own
      slot, and `pre-wrap` cancelled exactly that: a wrapping block never overflows, so `overflow-x`
@@ -134,6 +139,12 @@ pre.clds-scroll {
      value, and the block's height jumps with the width of the window. */
   white-space: pre;
   margin: 0;
+  padding: var(--clds-space-5) var(--clds-space-6);
+  background: var(--clds-color-field);
+  border: 1px solid var(--clds-color-rule);
+  border-radius: var(--clds-radius-md);
+  /* The scrollbar sits on the padding rather than over the first character of a line. */
+  scrollbar-gutter: stable;
 }
 
 /* Columns folded away on a narrow screen — developer columns (offset and the like) take this. */
