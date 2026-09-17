@@ -24,6 +24,16 @@ export type UpdateDetailEvent = {
   lastDescendantNodeId: number | null;
   // Where this event sits in the tree of the events shown — derived here (nestUpdateEvents), not sent by the node.
   tree: UpdateEventPlacement;
+  // **created only — the parties this create was divulged to.** A Create node's informees are exactly its
+  // stakeholders (signatories ∪ observers), so a party in witnessParties beyond them is not there because it
+  // stands on the contract: it is an informee of some node above this one, and that node's subtree opened for
+  // it. That is divulgence, and a divulged contract can be read but not spent — it never enters an active set.
+  //
+  // **null on an exercised event, because this response cannot decide it.** An Exercise node's informees are
+  // the target contract's signatories ∪ the choice's controllers ∪ its choice observers (∪ the target's
+  // observers when consuming), and of those the response carries only the acting parties. Answering
+  // "divulged" there would mean guessing at the rest.
+  divulgedTo: string[] | null;
   contractId: string;
   templateId: string;
   package: string;
@@ -153,6 +163,13 @@ export function buildUpdateDetail(
         exercised && typeof exercised.lastDescendantNodeId === "number"
           ? exercised.lastDescendantNodeId
           : null,
+      divulgedTo: created
+        ? witnessParties.filter(
+            (party) =>
+              !(isStringArray(created.signatories) ? created.signatories : []).includes(party) &&
+              !(isStringArray(created.observers) ? created.observers : []).includes(party),
+          )
+        : null,
       contractId: source.contractId,
       templateId: source.templateId,
       package: parsed.package_name,
@@ -183,14 +200,21 @@ export function buildUpdateDetail(
     tree: placements[index] ?? { depth: 0, ancestorIndex: null, descendantCount: 0 },
   }));
 
-  // “Why I can see this” — for each event, ask the role of my parties and gather per party. exercised has no signatories/observers,
-  // so witnessParties alone qualifies as the witness role — a witness in LEDGER_EFFECTS is an informee.
+  // “Why I can see this” — for each event, ask the role of my parties and gather per party.
+  //
+  // **witnessParties in LEDGER_EFFECTS are cumulative informees**: the informees of that node and of every node
+  // above it. So the witness role does not say "informee of this node" — it says "an informee of this node or
+  // of one above it, and not a stakeholder here". On a created event that difference is exactly divulgence
+  // (see divulgedTo); on an exercised event it cannot be told apart from this response alone.
   const byParty = new Map<string, UpdateVisibilityReason>();
   events.forEach((event, index) => {
     const explained = explainVisibility(viewerParties, {
       signatories: event.signatories ?? [],
       observers: event.observers ?? [],
       witnessParties: event.witnessParties,
+      // An exercised event's acting parties are its controllers, and a controller is an informee of that node
+      // by the exercise itself. Without them my own party fell through to "witness", which says the opposite.
+      actingParties: event.actingParties ?? [],
     });
     if (explained.status !== "ok") return;
     for (const reason of explained.reasons) {

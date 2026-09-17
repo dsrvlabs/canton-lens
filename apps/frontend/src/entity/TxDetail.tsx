@@ -223,14 +223,20 @@ function Events({ v }: { v: Tx }) {
   const [lens, setLens] = useState<string | null>(null);
   const { myParties } = useSession();
 
-  // Every party named as an informee on the events shown, and how many of them name it. This is not "what
-  // that party can see" — it is what this reader can see with that party named on it.
+  // Every party named as a witness on the events shown, and how many of them name it. **witnessParties in
+  // LEDGER_EFFECTS are cumulative informees** — the informees of that node and of every node above it — so
+  // this counts where a party is entitled to see, not where it stands on the contract. And it is not "what
+  // that party can see": it is what this reader can see with that party named on it.
   const informees = new Map<string, number>();
   for (const event of v.events)
     for (const party of event.witnessParties ?? [])
       informees.set(party, (informees.get(party) ?? 0) + 1);
   const parties = [...informees.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
   const lensCount = lens === null ? 0 : (informees.get(lens) ?? 0);
+  // Of those, the ones it sees without standing on the contract — an informee of an event above it. Only a
+  // create can answer that (divulgedTo in core), so this is a floor, never a total.
+  const lensDivulged =
+    lens === null ? 0 : v.events.filter((e) => (e.divulgedTo ?? []).includes(lens)).length;
 
   const ancestorsOf = (i: number): number[] => {
     const chain: number[] = [];
@@ -292,7 +298,7 @@ function Events({ v }: { v: Tx }) {
         <>
           {parties.length > 1 ? (
             <SectionBody className="tx-lens">
-              <span className="clds-muted">Informee lens</span>
+              <span className="clds-muted">Witness lens</span>
               {parties.map(([party, count]) => (
                 <Button
                   key={party}
@@ -307,13 +313,17 @@ function Events({ v }: { v: Tx }) {
                 </Button>
               ))}
               {/* What the lens does say, and what it does not. The events held here are the reader's own; a
-                party named on them is an informee on those, and nothing follows about the rest of its ledger. */}
+                party named on them is entitled to those, and nothing follows about the rest of its ledger. */}
               {lens === null ? (
-                <Muted>— dim every event the chosen party is not an informee on</Muted>
+                <Muted>— dim every event the chosen party is not a witness of</Muted>
               ) : (
                 <Muted>
-                  — <b>{shortParty(lens)}</b> is an informee on {lensCount} of the {n} event
-                  {n === 1 ? "" : "s"} you can see. What it sees beyond them is not known here.
+                  — <b>{shortParty(lens)}</b> is a witness of {lensCount} of the {n} event
+                  {n === 1 ? "" : "s"} you can see
+                  {lensDivulged === 0
+                    ? ""
+                    : `, and on ${lensDivulged} of them it stands on nothing — it sees them through an event above (divulged)`}
+                  . What it sees beyond them is not known here.
                 </Muted>
               )}
             </SectionBody>
@@ -367,7 +377,7 @@ function Events({ v }: { v: Tx }) {
         <SectionBody>
           <Muted>
             Indented by the transaction's node ids — an event stands under the exercise whose
-            subtree it fell in. Nodes you are not an informee on never arrive, so an event may stand
+            subtree it fell in. Nodes you are not a witness of never arrive, so an event may stand
             under an ancestor further up than its own parent; the row's details say which node it is
             and which event it stands under. Folding an exercise hides its subtree and nothing else
             — the row that hides it counts what went with it.
@@ -568,8 +578,36 @@ function EventDetail({ e }: { e: TxEvent }) {
         )}
         <dt>Witnesses</dt>
         <dd>
-          <PartyList values={e.witnessParties ?? []} />
+          <PartyList values={e.witnessParties ?? []} />{" "}
+          <Muted>— informees of this event or of one above it</Muted>
         </dd>
+        {/* Divulgence, where it can be told: a Create's informees are exactly its stakeholders, so a witness
+            beyond them is one the subtree opened for. An Exercise cannot be told apart from this response. */}
+        {e.kind === "created" ? (
+          (e.divulgedTo ?? []).length > 0 ? (
+            <>
+              <dt>Divulged to</dt>
+              <dd>
+                <PartyList values={e.divulgedTo ?? []} />{" "}
+                <Muted>
+                  — no stakeholder of this contract; it sees the create through an event above it,
+                  and a divulged contract can be read but never spent
+                </Muted>
+              </dd>
+            </>
+          ) : null
+        ) : (
+          <>
+            <dt>Divulged to</dt>
+            <dd>
+              <Muted>
+                not answered for an exercise — the response carries its acting parties, not the
+                target contract's signatories or the choice's observers, so who stands on it cannot
+                be told
+              </Muted>
+            </dd>
+          </>
+        )}
         {e.kind === "exercised" && e.consuming ? (
           <>
             <dt>Contract</dt>
