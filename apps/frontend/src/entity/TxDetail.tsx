@@ -215,8 +215,8 @@ function Events({ v }: { v: Tx }) {
   // always named on the row that hides it ("6 events under it, folded"), because a reader must not have to
   // guess that the list is short of something.
   const [folded, setFolded] = useState<ReadonlySet<number>>(() => new Set<number>());
-  // Which row the pointer is on. Its ancestors light up with it — at four levels the rails alone leave you
-  // counting stripes to find out whose child a row is.
+  // Which row the pointer is on. A row and the payload row under it are two <tr>s of one event, so the pair
+  // is lit from here rather than by :hover, which would paint one half of it.
   const [hovered, setHovered] = useState<number | null>(null);
   // The party the lens is set to, if any. It **dims** rather than hides: an event the lens passes over is
   // still one of this transaction's events, and hiding it would break the tree above it as well.
@@ -243,9 +243,11 @@ function Events({ v }: { v: Tx }) {
     return chain;
   };
   const withChildren = v.events.flatMap((e, i) => (e.tree.descendantCount > 0 ? [i] : []));
-  // The row under the pointer lights with its ancestors — it opens on a click, so it has to answer the
-  // pointer before the click.
-  const lit = hovered === null ? [] : [hovered, ...ancestorsOf(hovered)];
+  // **Only the row under the pointer.** It used to light its ancestors with it, which made sense while the
+  // tree was drawn as rails — the light followed the line. With one-line rows and no rails, a row two places
+  // up changing colour has nothing tying it to the pointer, and it reads as the table misfiring. Where an
+  // event stands is said by the indent, and its details name the event it stands under.
+  const lit = hovered === null ? [] : [hovered];
   const toggle = (i: number) =>
     setFolded((was) => {
       const next = new Set(was);

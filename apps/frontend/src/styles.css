@@ -590,9 +590,9 @@
 .tx-detail .clds-description-list {
   margin: 0;
 }
-/* The row under the pointer and the events it stands under are lit together — the indent alone does not say
-   whose child a row is once the tree is three levels deep. The pair (row + its open detail) is lit as one.
-   Direct children again, so a payload's own table is not painted row by row. */
+/* The row under the pointer, lit as one piece with its open detail — the two are one event in two <tr>s, and
+   :hover would paint whichever half the pointer is in. Direct children again, so a payload's own table is
+   not painted row by row. */
 .clds-table > tbody > tr.tx-event--lit > td,
 .clds-table > tbody > tr.tx-args--lit > td {
   background: var(--clds-color-field);
