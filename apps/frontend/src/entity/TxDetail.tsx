@@ -278,12 +278,13 @@ function Events({ v }: { v: Tx }) {
           <Table className="tx-events">
             <colgroup>
               <col style={{ width: 44 }} />
-              {/* Wide enough for the rails, the caret and the kind badge side by side — under that the badge
-                  ran into the template beside it once an event was two levels deep. */}
-              <col style={{ width: 248 }} />
-              <col style={{ width: "22%" }} />
-              <col style={{ width: "20%" }} />
+              {/* The tree column: the caret, the indent and the kind badge, wide enough for all three at
+                  the deepest indent the rows are allowed to take. */}
+              <col style={{ width: 236 }} />
+              <col style={{ width: "26%" }} />
+              <col style={{ width: "18%" }} />
               <col />
+              <col style={{ width: 36 }} />
             </colgroup>
             <tbody>
               <tr>
@@ -292,6 +293,7 @@ function Events({ v }: { v: Tx }) {
                 <th>Template / choice</th>
                 <th>Contract</th>
                 <th>Witnesses</th>
+                <th />
               </tr>
               {v.events.map((e, i) =>
                 ancestorsOf(i).some((a) => folded.has(a)) ? null : (
@@ -301,7 +303,6 @@ function Events({ v }: { v: Tx }) {
                     key={i}
                     e={e}
                     i={i}
-                    rails={railsOf(v.events, i)}
                     folded={folded.has(i)}
                     lit={lit.includes(i)}
                     onToggle={() => toggle(i)}
@@ -318,9 +319,9 @@ function Events({ v }: { v: Tx }) {
           <Muted>
             Indented by the transaction's node ids — an event stands under the exercise whose
             subtree it fell in. Nodes you are not an informee on never arrive, so an event may stand
-            under an ancestor further up than its own parent; the row says which node it is and
-            which event it stands under. Folding an exercise hides its subtree and nothing else —
-            the row that hides it counts what went with it.
+            under an ancestor further up than its own parent; the row's details say which node it is
+            and which event it stands under. Folding an exercise hides its subtree and nothing else
+            — the row that hides it counts what went with it.
           </Muted>
         </SectionBody>
       ) : null}
@@ -328,38 +329,20 @@ function Events({ v }: { v: Tx }) {
   );
 }
 
-// One event = two rows. The upper row has five cells (index · kind · template/choice · contract ·
-// witnesses), the lower row carries the arguments at full width.
-// The arguments (typed fields · Raw JSON) take their width from their content, and as a sixth column
-// they pushed the table out of its section.
+// One event = **one row**, and a second row under it only while its details are open. Every cell holds a
+// single line: the tree lives in the first cell (the caret and the indent), the rest are short values, and
+// what cannot be said in a line — the package, the node's place, the whole witness list, the arguments —
+// waits behind the chevron at the end. The rows were blocks before, and a tree of blocks is not a tree you
+// can follow; this is the shape a nested data table takes (Cloudscape's table with nested resources).
 //
-// The rails are capped: past this many levels the rows would be pushed out of their column, and the line
-// under the badge (node · under #) names the place exactly, so nothing is lost by stopping the stagger.
+// The indent is capped: past this many levels the badge would be pushed out of its column, and the details
+// name the place exactly, so nothing is lost by stopping the stagger.
 const INDENT_LEVELS = 6;
-
-// The rails to draw to the left of one event, outermost first. A rail is `true` where the ancestor at that
-// level still has events below this row — that is the line that has to carry on past it — and the last entry
-// is the connector into this row itself.
-//
-// A subtree is contiguous in this list (pre-order), so the ancestor at index `a` owns rows `a+1 … a+n`: it
-// continues below row `i` exactly when `a + n > i`. No second pass over the events is needed for that.
-function railsOf(events: readonly TxEvent[], i: number): boolean[] {
-  const rails: boolean[] = [];
-  const row = events[i];
-  if (row === undefined) return rails;
-  for (let at = row.tree.ancestorIndex; at !== null; ) {
-    const ancestor = events[at];
-    if (ancestor === undefined) break;
-    rails.unshift(at + ancestor.tree.descendantCount > i);
-    at = ancestor.tree.ancestorIndex;
-  }
-  return rails.slice(0, INDENT_LEVELS);
-}
+const INDENT_STEP = 26;
 
 function EventRow({
   e,
   i,
-  rails,
   folded,
   lit,
   onToggle,
@@ -367,7 +350,6 @@ function EventRow({
 }: {
   e: TxEvent;
   i: number;
-  rails: boolean[];
   // This event's own subtree is hidden.
   folded: boolean;
   // The pointer is on this event or on something under it.
@@ -375,191 +357,191 @@ function EventRow({
   onToggle: () => void;
   onHover: (i: number | null) => void;
 }) {
-  const { ancestorIndex, descendantCount } = e.tree;
-  const hasArgs =
-    (e.kind === "created" && (e.templateSchema?.typedPayload || e.createArgument != null)) ||
-    (e.kind === "exercised" &&
-      (e.choiceSchema || e.choiceArgument != null || e.exerciseResult != null)) ||
-    (e.schemaStatus && e.schemaStatus !== "ok");
+  const { depth, descendantCount } = e.tree;
+  const [open, setOpen] = useState(false);
+  const witnesses = e.witnessParties ?? [];
   const rowClass = (base: string) => `${base}${lit ? ` ${base}--lit` : ""}`;
+  const hover = { onMouseEnter: () => onHover(i), onMouseLeave: () => onHover(null) };
   return (
     <>
-      <tr
-        className={`${rowClass("tx-event")}${hasArgs ? " tx-event--open" : ""}`}
-        onMouseEnter={() => onHover(i)}
-        onMouseLeave={() => onHover(null)}
-      >
+      <tr className={`${rowClass("tx-event")}${open ? " tx-event--open" : ""}`} {...hover}>
         <td>
           <Mono className="clds-muted">{i}</Mono>
         </td>
-        <td>
-          {/* The rails are drawn, not written: a line per level that carries on past this row, and a
-              connector into the row itself — the shape a reader already knows from a file tree. */}
-          <div className="tx-nest">
-            {rails.map((carriesOn, level) => (
-              <span
-                // The level is the name — there is nothing else to identify a rail by.
-                // biome-ignore lint/suspicious/noArrayIndexKey: the level is the name
-                key={level}
-                aria-hidden="true"
-                className={`tx-nest__rail${
-                  level === rails.length - 1
-                    ? carriesOn
-                      ? " tx-nest__rail--tee"
-                      : " tx-nest__rail--elbow"
-                    : carriesOn
-                      ? " tx-nest__rail--line"
-                      : ""
-                }`}
-              />
-            ))}
-            <div className="tx-nest__body">
-              <div className="tx-nest__head">
-                {descendantCount > 0 ? (
-                  <button
-                    type="button"
-                    className="tx-nest__caret"
-                    aria-expanded={!folded}
-                    aria-label={`${folded ? "Show" : "Hide"} the ${descendantCount} event${
-                      descendantCount === 1 ? "" : "s"
-                    } under event ${i}`}
-                    onClick={onToggle}
-                  >
-                    <span aria-hidden="true">{folded ? "▸" : "▾"}</span>
-                  </button>
-                ) : (
-                  /* The gap a caret would take, so the badges of leaves and parents start on one line. */
-                  <span className="tx-nest__caret tx-nest__caret--none" aria-hidden="true" />
-                )}
-                {e.kind === "created" ? (
-                  <Badge tone="positive" shape="rounded" mono>
-                    created
-                  </Badge>
-                ) : (
-                  <Badge tone="negative" shape="rounded" mono>
-                    exercised{e.consuming ? " · consuming" : ""}
-                  </Badge>
-                )}
-              </div>
-              {/* Where this row sits in the tree, in words — the rails show it, this says it. */}
-              {e.nodeId === null && ancestorIndex === null && descendantCount === 0 ? null : (
-                <div className="clds-muted tx-nest__where">
-                  {e.nodeId === null ? "node id not in this response" : `node ${e.nodeId}`}
-                  {ancestorIndex === null ? null : ` · under #${ancestorIndex}`}
-                  {descendantCount === 0
-                    ? null
-                    : ` · ${descendantCount} event${descendantCount === 1 ? "" : "s"} under it${
-                        folded ? ", folded" : ""
-                      }`}
-                </div>
-              )}
-            </div>
+        <td className="tx-cell">
+          <div
+            className="tx-lead"
+            style={{ paddingInlineStart: Math.min(depth, INDENT_LEVELS) * INDENT_STEP }}
+          >
+            {descendantCount > 0 ? (
+              <button
+                type="button"
+                className="tx-caret"
+                aria-expanded={!folded}
+                aria-label={`${folded ? "Show" : "Hide"} the ${descendantCount} event${
+                  descendantCount === 1 ? "" : "s"
+                } under event ${i}`}
+                onClick={onToggle}
+              >
+                <span aria-hidden="true">{folded ? "▶" : "▼"}</span>
+              </button>
+            ) : (
+              /* The width a caret would take, so every badge in the column starts on one line. */
+              <span className="tx-caret tx-caret--none" aria-hidden="true" />
+            )}
+            {e.kind === "created" ? (
+              <Badge tone="positive" shape="rounded" mono>
+                created
+              </Badge>
+            ) : (
+              <Badge tone="negative" shape="rounded" mono>
+                exercised{e.consuming ? " · consuming" : ""}
+              </Badge>
+            )}
+            {folded ? <Muted>{descendantCount} folded</Muted> : null}
           </div>
         </td>
-        <td>
+        <td className="tx-cell" title={e.choice ? `${e.templateId} · ${e.choice}` : e.templateId}>
           <b>{e.entity}</b> <Muted>{e.module}</Muted>
           {e.choice ? (
             <>
-              <br />
+              {" · "}
               <Mono>{e.choice}</Mono>
             </>
           ) : null}
-          <br />
-          <Mono className="clds-muted">{e.packageName ?? short(e.package, 8)}</Mono>
         </td>
-        <td>
+        <td className="tx-cell">
           {e.kind === "created" ? (
-            <ContractLink id={e.contractId} n={12} />
+            <ContractLink id={e.contractId} n={10} />
+          ) : (
+            <Chip value={e.contractId} n={10} />
+          )}
+        </td>
+        <td className="tx-cell">
+          {witnesses.length === 0 ? (
+            <Muted>none</Muted>
           ) : (
             <>
-              <Chip value={e.contractId} n={12} />
-              {e.consuming ? (
-                <>
-                  {" "}
-                  {/* The long form of this sat in a 20%-wide column and pushed the row three lines tall for
-                      a sentence that says the same thing on every consuming event. */}
-                  <Muted title="An archived contract is not in this view, so there is no detail page to open.">
-                    archived by this
-                  </Muted>
-                </>
+              <PartyChip value={witnesses[0] ?? ""} />
+              {witnesses.length > 1 ? (
+                <Muted title={witnesses.join(", ")}> +{witnesses.length - 1}</Muted>
               ) : null}
             </>
           )}
         </td>
-        <td>
-          <PartyList values={e.witnessParties ?? []} />
-          {e.actingParties ? (
-            <div className="clds-muted">
-              acting: <PartyList values={e.actingParties} />
-            </div>
-          ) : null}
+        <td className="tx-cell tx-cell--end">
+          <button
+            type="button"
+            className="tx-caret"
+            aria-expanded={open}
+            aria-label={`${open ? "Hide" : "Show"} the details of event ${i}`}
+            onClick={() => setOpen(!open)}
+          >
+            <span aria-hidden="true">{open ? "▾" : "▸"}</span>
+          </button>
         </td>
       </tr>
-      {hasArgs ? (
-        <tr
-          className={rowClass("tx-args")}
-          onMouseEnter={() => onHover(i)}
-          onMouseLeave={() => onHover(null)}
-        >
-          <td colSpan={5}>
-            {/* The payload row carries the rails on past it — the line to an event's children has to cross
-                its own arguments, or the tree breaks in two everywhere a payload is open. The gutter also
-                sets the indent, so a nested exercise's arguments are never read as its parent's. */}
-            <div className="tx-nest tx-nest--args">
-              {[...rails, ...(descendantCount > 0 ? [true] : [])].map((carriesOn, level) => (
-                <span
-                  // biome-ignore lint/suspicious/noArrayIndexKey: the level is the name
-                  key={level}
-                  aria-hidden="true"
-                  className={carriesOn ? "tx-nest__rail tx-nest__rail--line" : "tx-nest__rail"}
-                />
-              ))}
-              <div className="tx-nest__body">
-                {e.kind === "created" && e.templateSchema?.typedPayload ? (
-                  /* A payload opens when it is asked for. Left open, four fields per create pushed the
-                     rows so far apart that the tree between them could not be followed. */
-                  <Disclosure
-                    summary={
-                      <>
-                        create argument <Muted>(typed)</Muted>
-                      </>
-                    }
-                  >
-                    <TypedFields fields={e.templateSchema.typedPayload} />
-                  </Disclosure>
-                ) : null}
-                {e.kind === "exercised" && e.choiceSchema ? (
-                  <div className="clds-muted">
-                    {e.choiceSchema.consuming ? "consuming" : "non-consuming"} · argument{" "}
-                    {e.choiceSchema.argType ? <Mono>{e.choiceSchema.argType}</Mono> : <NoType />}
-                    {(e.choiceSchema.argFields ?? []).length > 0
-                      ? `: ${(e.choiceSchema.argFields ?? []).map((f) => `${f.name}: ${f.type}`).join(", ")}`
-                      : ""}{" "}
-                    · returns{" "}
-                    {e.choiceSchema.returnType ? (
-                      <Mono>{e.choiceSchema.returnType}</Mono>
-                    ) : (
-                      <NoType />
-                    )}
-                  </div>
-                ) : null}
-                <RawJson
-                  label={e.kind === "created" ? "create argument (raw)" : "choice argument"}
-                  value={e.kind === "created" ? e.createArgument : e.choiceArgument}
-                />
-                {e.kind === "exercised" ? (
-                  <RawJson label="exercise result" value={e.exerciseResult} />
-                ) : null}
-                {e.schemaStatus && e.schemaStatus !== "ok" ? (
-                  <div className="clds-muted" title={e.schemaStatus}>
-                    schema: {saidSchema(e.schemaStatus)}
-                  </div>
-                ) : null}
-              </div>
-            </div>
+      {open ? (
+        <tr className={rowClass("tx-args")} {...hover}>
+          <td colSpan={6}>
+            <EventDetail e={e} />
           </td>
         </tr>
       ) : null}
     </>
+  );
+}
+
+// Everything about one event that does not fit on its line. Nothing here is new to the response — it is what
+// the row used to carry in three stacked lines per cell.
+function EventDetail({ e }: { e: TxEvent }) {
+  const { nodeId, tree } = e;
+  return (
+    <div className="tx-detail">
+      <DescriptionList variant="rows">
+        <dt>Place</dt>
+        <dd>
+          <span className="clds-mono">
+            {nodeId === null ? "node id not in this response" : `node ${nodeId}`}
+          </span>
+          {tree.ancestorIndex === null ? null : <> · under event {tree.ancestorIndex}</>}
+          {tree.descendantCount === 0 ? null : (
+            <>
+              {" "}
+              · {tree.descendantCount} event{tree.descendantCount === 1 ? "" : "s"} under it
+            </>
+          )}
+        </dd>
+        <dt>Package</dt>
+        <dd className="clds-mono">{e.packageName ?? short(e.package, 12)}</dd>
+        {e.kind === "exercised" ? (
+          <>
+            <dt>Acting parties</dt>
+            <dd>
+              <PartyList values={e.actingParties ?? []} />
+            </dd>
+          </>
+        ) : (
+          <>
+            <dt>Signatories</dt>
+            <dd>
+              <PartyList values={e.signatories ?? []} />
+            </dd>
+            <dt>Observers</dt>
+            <dd>
+              <PartyList values={e.observers ?? []} />
+            </dd>
+          </>
+        )}
+        <dt>Witnesses</dt>
+        <dd>
+          <PartyList values={e.witnessParties ?? []} />
+        </dd>
+        {e.kind === "exercised" && e.consuming ? (
+          <>
+            <dt>Contract</dt>
+            <dd>
+              <Muted>
+                archived by this exercise — an archived contract is not in this view, so there is no
+                detail page to open
+              </Muted>
+            </dd>
+          </>
+        ) : null}
+      </DescriptionList>
+      {e.kind === "exercised" && e.choiceSchema ? (
+        <div className="clds-muted">
+          {e.choiceSchema.consuming ? "consuming" : "non-consuming"} · argument{" "}
+          {e.choiceSchema.argType ? <Mono>{e.choiceSchema.argType}</Mono> : <NoType />}
+          {(e.choiceSchema.argFields ?? []).length > 0
+            ? `: ${(e.choiceSchema.argFields ?? []).map((f) => `${f.name}: ${f.type}`).join(", ")}`
+            : ""}{" "}
+          · returns{" "}
+          {e.choiceSchema.returnType ? <Mono>{e.choiceSchema.returnType}</Mono> : <NoType />}
+        </div>
+      ) : null}
+      {e.kind === "created" && e.templateSchema?.typedPayload ? (
+        <Disclosure
+          open
+          summary={
+            <>
+              create argument <Muted>(typed)</Muted>
+            </>
+          }
+        >
+          <TypedFields fields={e.templateSchema.typedPayload} />
+        </Disclosure>
+      ) : null}
+      <RawJson
+        label={e.kind === "created" ? "create argument (raw)" : "choice argument"}
+        value={e.kind === "created" ? e.createArgument : e.choiceArgument}
+      />
+      {e.kind === "exercised" ? <RawJson label="exercise result" value={e.exerciseResult} /> : null}
+      {e.schemaStatus && e.schemaStatus !== "ok" ? (
+        <div className="clds-muted" title={e.schemaStatus}>
+          schema: {saidSchema(e.schemaStatus)}
+        </div>
+      ) : null}
+    </div>
   );
 }

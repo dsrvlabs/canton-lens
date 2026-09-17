@@ -490,7 +490,7 @@
 }
 /* The event table's own cells only — inherited by the field table standing inside it, numbers would wrap
    character by character in the narrow cells */
-.tx-events > tbody > tr > td {
+.tx-events > tbody > tr > td:not(.tx-cell) {
   overflow-wrap: anywhere;
 }
 /* A chip is nowrap because value + Copy is one piece, but when the cell is narrower than that, it wraps
@@ -498,116 +498,72 @@
 .tx-events .clds-badge .clds-inline {
   white-space: normal;
 }
-/* The transaction is a tree and the rows are read as one: the indent is the nesting, and the elbow says the
-   row is somebody's child. The elbow stays clear of the badge so the kind still reads first. */
-.tx-nest {
-  display: flex;
-  align-items: stretch;
-  /* Where the connector meets the row — the middle of the badge on the first line, not the middle of the
-     cell, which the second line (node · under #) would drag downwards. */
-  --tx-rail-join: 11px;
-  --tx-rail-step: 16px;
-  /* A shade above the table's own rules: the rails are the one line here that has to be followed, and at
-     the rules' weight they read as more table furniture. */
-  --tx-rail-ink: color-mix(in srgb, var(--clds-color-ink-faint) 55%, transparent);
+/* ── The event table drawn as a nested data table ──────────────────────────────
+   One event is one row of fixed height. The hierarchy is said by the first cell alone — a caret where an
+   exercise has events under it, and an indent — and every other cell holds one short value, clipped rather
+   than wrapped. What does not fit waits behind the chevron at the end of the row. */
+.tx-cell {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-/* The payload row under an event — no connector of its own, only the lines passing through it. */
-.tx-nest--args {
-  /* Lines up with the ordinal column, so the gutter continues the one in the row above. */
-  margin-left: 43px;
+.tx-cell--end {
+  text-align: right;
 }
-/* One rail per level between this event and the root. It is blank where that ancestor has nothing left
-   below this row, a line where the ancestor's subtree carries on past it. */
-.tx-nest__rail {
-  position: relative;
-  flex: none;
-  width: var(--tx-rail-step);
-}
-.tx-nest__rail--line::before,
-.tx-nest__rail--tee::before,
-.tx-nest__rail--elbow::before {
-  content: "";
-  position: absolute;
-  left: 50%;
-  top: 0;
-  bottom: 0;
-  border-left: 1px solid var(--tx-rail-ink);
-}
-/* The last child closes its rail at the join; anything above it carries on down. */
-.tx-nest__rail--elbow::before {
-  bottom: auto;
-  height: var(--tx-rail-join);
-}
-/* The arm into the row. Rounded where it turns, so the corner reads as one stroke rather than two. */
-.tx-nest__rail--tee::after,
-.tx-nest__rail--elbow::after {
-  content: "";
-  position: absolute;
-  left: 50%;
-  right: 0;
-  top: 0;
-  height: var(--tx-rail-join);
-  border-left: 1px solid var(--tx-rail-ink);
-  border-bottom: 1px solid var(--tx-rail-ink);
-  border-bottom-left-radius: 5px;
-}
-.tx-nest__body {
-  min-width: 0;
-  padding-left: var(--clds-space-1);
-}
-.tx-nest__head {
+.tx-lead {
   display: flex;
   align-items: center;
-  gap: var(--clds-space-1);
+  gap: var(--clds-space-2);
 }
-/* The fold control. It is the row's own affordance, so it takes no button chrome — only the caret, in the
-   dim ink, turning where a disclosure's does. A leaf keeps the same width so every badge starts on one line. */
-.tx-nest__caret {
+/* The caret is the row's own affordance, so it takes no button chrome — only the mark, in the dim ink. A
+   leaf keeps the same width, so every badge in the column starts on one line. */
+.tx-caret {
   flex: none;
-  width: 14px;
-  height: 14px;
+  width: 13px;
+  height: 13px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   padding: 0;
   border: 0;
   background: none;
-  color: var(--clds-color-ink-dim);
-  font-size: var(--clds-text-caption);
+  color: var(--clds-color-ink-faint);
+  font-size: 9px;
   line-height: 1;
   cursor: pointer;
 }
-.tx-nest__caret:hover {
+.tx-caret:hover {
   color: var(--clds-color-ink);
 }
-.tx-nest__caret--none {
+.tx-caret--none {
   cursor: default;
 }
-/* Which node it was, and whose child — the rails alone stop saying it once the levels are capped. */
-.tx-nest__where {
-  margin-top: var(--clds-space-1);
-  font-size: var(--clds-text-caption);
-}
+/* The detail row — everything about one event that its line could not hold. It is inset to the width of the
+   ordinal column and set on the field ground, so it reads as belonging to the row above rather than as
+   another row of the table. */
 .clds-table tr.tx-event--open td {
   border-bottom: 0;
-  padding-bottom: var(--clds-space-1);
 }
 .clds-table tr.tx-args td {
   padding-top: 0;
-  /* Indented by the width of the ordinal column — so it shows whose arguments these are. A nested event's
-     row adds its own depth to this (TxDetail), so a payload is never read as its parent's. */
-  padding-inline-start: var(--clds-space-8);
+  padding-bottom: var(--clds-space-6);
+  padding-inline-start: calc(var(--clds-space-8) + 44px);
 }
-/* The row under the pointer and the events it stands under are lit together — at four levels the rails
-   alone leave you counting stripes to find out whose child a row is. The pair (event + its payload) is lit
-   as one, and the rails of the lit rows come forward with it. */
+.tx-detail {
+  border-left: 2px solid var(--clds-color-rule);
+  padding-left: var(--clds-space-6);
+}
+.tx-detail > * + * {
+  margin-top: var(--clds-space-4);
+}
+.tx-detail .clds-description-list {
+  margin: 0;
+}
+/* The row under the pointer and the events it stands under are lit together — the indent alone does not say
+   whose child a row is once the tree is three levels deep. The pair (row + its open detail) is lit as one. */
 .clds-table tr.tx-event--lit td,
 .clds-table tr.tx-args--lit td {
   background: var(--clds-color-field);
-}
-.tx-event--lit .tx-nest,
-.tx-args--lit .tx-nest {
-  --tx-rail-ink: var(--clds-color-ink-dim);
 }
 /* The two rows are one piece, so hover never paints just one half */
 .clds-table tr.tx-args:hover td,
