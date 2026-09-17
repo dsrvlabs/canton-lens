@@ -500,18 +500,63 @@
 }
 /* The transaction is a tree and the rows are read as one: the indent is the nesting, and the elbow says the
    row is somebody's child. The elbow stays clear of the badge so the kind still reads first. */
-.tx-branch {
+.tx-nest {
   display: flex;
-  align-items: center;
-  gap: 3px;
+  align-items: stretch;
+  /* Where the connector meets the row — the middle of the badge on the first line, not the middle of the
+     cell, which the second line (node · under #) would drag downwards. */
+  --tx-rail-join: 11px;
+  --tx-rail-step: 16px;
+  /* A shade above the table's own rules: the rails are the one line here that has to be followed, and at
+     the rules' weight they read as more table furniture. */
+  --tx-rail-ink: color-mix(in srgb, var(--clds-color-ink-faint) 55%, transparent);
 }
-.tx-branch__elbow {
-  color: var(--clds-color-ink-faint);
-  font-family: var(--clds-font-mono);
-  line-height: 1;
+/* The payload row under an event — no connector of its own, only the lines passing through it. */
+.tx-nest--args {
+  /* Lines up with the ordinal column, so the gutter continues the one in the row above. */
+  margin-left: 43px;
 }
-/* Which node it was, and whose child — the indent alone stops saying it once the levels are capped. */
-.tx-branch__where {
+/* One rail per level between this event and the root. It is blank where that ancestor has nothing left
+   below this row, a line where the ancestor's subtree carries on past it. */
+.tx-nest__rail {
+  position: relative;
+  flex: none;
+  width: var(--tx-rail-step);
+}
+.tx-nest__rail--line::before,
+.tx-nest__rail--tee::before,
+.tx-nest__rail--elbow::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  border-left: 1px solid var(--tx-rail-ink);
+}
+/* The last child closes its rail at the join; anything above it carries on down. */
+.tx-nest__rail--elbow::before {
+  bottom: auto;
+  height: var(--tx-rail-join);
+}
+/* The arm into the row. Rounded where it turns, so the corner reads as one stroke rather than two. */
+.tx-nest__rail--tee::after,
+.tx-nest__rail--elbow::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  right: 0;
+  top: 0;
+  height: var(--tx-rail-join);
+  border-left: 1px solid var(--tx-rail-ink);
+  border-bottom: 1px solid var(--tx-rail-ink);
+  border-bottom-left-radius: 5px;
+}
+.tx-nest__body {
+  min-width: 0;
+  padding-left: var(--clds-space-2);
+}
+/* Which node it was, and whose child — the rails alone stop saying it once the levels are capped. */
+.tx-nest__where {
   margin-top: var(--clds-space-1);
   font-size: var(--clds-text-caption);
 }
@@ -521,8 +566,9 @@
 }
 .clds-table tr.tx-args td {
   padding-top: 0;
-  /* Indented by the width of the ordinal column — so it shows whose arguments these are */
-  padding-left: calc(var(--clds-space-8) + 43px);
+  /* Indented by the width of the ordinal column — so it shows whose arguments these are. A nested event's
+     row adds its own depth to this (TxDetail), so a payload is never read as its parent's. */
+  padding-inline-start: var(--clds-space-8);
 }
 /* The two rows are one piece, so hover never paints just one half */
 .clds-table tr.tx-args:hover td,

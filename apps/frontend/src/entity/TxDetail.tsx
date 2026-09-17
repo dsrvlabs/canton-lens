@@ -236,7 +236,7 @@ function Events({ v }: { v: Tx }) {
               {v.events.map((e, i) => (
                 // An event's identity is its index (#) within the update — the screen writes that number too.
                 // biome-ignore lint/suspicious/noArrayIndexKey: the index is the name
-                <EventRow key={i} e={e} i={i} />
+                <EventRow key={i} e={e} i={i} rails={railsOf(v.events, i)} />
               ))}
             </tbody>
           </Table>
@@ -261,13 +261,31 @@ function Events({ v }: { v: Tx }) {
 // The arguments (typed fields · Raw JSON) take their width from their content, and as a sixth column
 // they pushed the table out of its section.
 //
-// The indent is capped: past this many levels the rows would be pushed out of their column, and the line under
-// the badge (node · under #) names the place exactly, so nothing is lost by stopping the stagger.
+// The rails are capped: past this many levels the rows would be pushed out of their column, and the line
+// under the badge (node · under #) names the place exactly, so nothing is lost by stopping the stagger.
 const INDENT_LEVELS = 6;
-const INDENT_STEP = 13;
 
-function EventRow({ e, i }: { e: TxEvent; i: number }) {
-  const { depth, ancestorIndex, descendantCount } = e.tree;
+// The rails to draw to the left of one event, outermost first. A rail is `true` where the ancestor at that
+// level still has events below this row — that is the line that has to carry on past it — and the last entry
+// is the connector into this row itself.
+//
+// A subtree is contiguous in this list (pre-order), so the ancestor at index `a` owns rows `a+1 … a+n`: it
+// continues below row `i` exactly when `a + n > i`. No second pass over the events is needed for that.
+function railsOf(events: readonly TxEvent[], i: number): boolean[] {
+  const rails: boolean[] = [];
+  const row = events[i];
+  if (row === undefined) return rails;
+  for (let at = row.tree.ancestorIndex; at !== null; ) {
+    const ancestor = events[at];
+    if (ancestor === undefined) break;
+    rails.unshift(at + ancestor.tree.descendantCount > i);
+    at = ancestor.tree.ancestorIndex;
+  }
+  return rails.slice(0, INDENT_LEVELS);
+}
+
+function EventRow({ e, i, rails }: { e: TxEvent; i: number; rails: boolean[] }) {
+  const { ancestorIndex, descendantCount } = e.tree;
   const hasArgs =
     (e.kind === "created" && (e.templateSchema?.typedPayload || e.createArgument != null)) ||
     (e.kind === "exercised" &&
@@ -280,37 +298,48 @@ function EventRow({ e, i }: { e: TxEvent; i: number }) {
           <Mono className="clds-muted">{i}</Mono>
         </td>
         <td>
-          <div
-            className="tx-branch"
-            style={
-              depth > 0 ? { paddingLeft: Math.min(depth, INDENT_LEVELS) * INDENT_STEP } : undefined
-            }
-          >
-            {depth > 0 ? (
-              <span className="tx-branch__elbow" aria-hidden="true">
-                └
-              </span>
-            ) : null}
-            {e.kind === "created" ? (
-              <Badge tone="positive" shape="rounded" mono>
-                created
-              </Badge>
-            ) : (
-              <Badge tone="negative" shape="rounded" mono>
-                exercised{e.consuming ? " · consuming" : ""}
-              </Badge>
-            )}
-          </div>
-          {/* Where this row sits in the tree, in words — the indent shows it, this says it. */}
-          {e.nodeId === null && ancestorIndex === null && descendantCount === 0 ? null : (
-            <div className="clds-muted tx-branch__where">
-              {e.nodeId === null ? "node id not in this response" : `node ${e.nodeId}`}
-              {ancestorIndex === null ? null : ` · under #${ancestorIndex}`}
-              {descendantCount === 0
-                ? null
-                : ` · ${descendantCount} event${descendantCount === 1 ? "" : "s"} under it`}
+          {/* The rails are drawn, not written: a line per level that carries on past this row, and a
+              connector into the row itself — the shape a reader already knows from a file tree. */}
+          <div className="tx-nest">
+            {rails.map((carriesOn, level) => (
+              <span
+                // The level is the name — there is nothing else to identify a rail by.
+                // biome-ignore lint/suspicious/noArrayIndexKey: the level is the name
+                key={level}
+                aria-hidden="true"
+                className={`tx-nest__rail${
+                  level === rails.length - 1
+                    ? carriesOn
+                      ? " tx-nest__rail--tee"
+                      : " tx-nest__rail--elbow"
+                    : carriesOn
+                      ? " tx-nest__rail--line"
+                      : ""
+                }`}
+              />
+            ))}
+            <div className="tx-nest__body">
+              {e.kind === "created" ? (
+                <Badge tone="positive" shape="rounded" mono>
+                  created
+                </Badge>
+              ) : (
+                <Badge tone="negative" shape="rounded" mono>
+                  exercised{e.consuming ? " · consuming" : ""}
+                </Badge>
+              )}
+              {/* Where this row sits in the tree, in words — the rails show it, this says it. */}
+              {e.nodeId === null && ancestorIndex === null && descendantCount === 0 ? null : (
+                <div className="clds-muted tx-nest__where">
+                  {e.nodeId === null ? "node id not in this response" : `node ${e.nodeId}`}
+                  {ancestorIndex === null ? null : ` · under #${ancestorIndex}`}
+                  {descendantCount === 0
+                    ? null
+                    : ` · ${descendantCount} event${descendantCount === 1 ? "" : "s"} under it`}
+                </div>
+              )}
             </div>
-          )}
+          </div>
         </td>
         <td>
           <b>{e.entity}</b> <Muted>{e.module}</Muted>
@@ -354,41 +383,60 @@ function EventRow({ e, i }: { e: TxEvent; i: number }) {
       {hasArgs ? (
         <tr className="tx-args">
           <td colSpan={5}>
-            {e.kind === "created" && e.templateSchema?.typedPayload ? (
-              <Disclosure
-                open
-                summary={
-                  <>
-                    create argument <Muted>(typed)</Muted>
-                  </>
-                }
-              >
-                <TypedFields fields={e.templateSchema.typedPayload} />
-              </Disclosure>
-            ) : null}
-            {e.kind === "exercised" && e.choiceSchema ? (
-              <div className="clds-muted">
-                {e.choiceSchema.consuming ? "consuming" : "non-consuming"} · argument{" "}
-                {e.choiceSchema.argType ? <Mono>{e.choiceSchema.argType}</Mono> : <NoType />}
-                {(e.choiceSchema.argFields ?? []).length > 0
-                  ? `: ${(e.choiceSchema.argFields ?? []).map((f) => `${f.name}: ${f.type}`).join(", ")}`
-                  : ""}{" "}
-                · returns{" "}
-                {e.choiceSchema.returnType ? <Mono>{e.choiceSchema.returnType}</Mono> : <NoType />}
+            {/* The payload row carries the rails on past it — the line to an event's children has to cross
+                its own arguments, or the tree breaks in two everywhere a payload is open. The gutter also
+                sets the indent, so a nested exercise's arguments are never read as its parent's. */}
+            <div className="tx-nest tx-nest--args">
+              {[...rails, ...(descendantCount > 0 ? [true] : [])].map((carriesOn, level) => (
+                <span
+                  // biome-ignore lint/suspicious/noArrayIndexKey: the level is the name
+                  key={level}
+                  aria-hidden="true"
+                  className={carriesOn ? "tx-nest__rail tx-nest__rail--line" : "tx-nest__rail"}
+                />
+              ))}
+              <div className="tx-nest__body">
+                {e.kind === "created" && e.templateSchema?.typedPayload ? (
+                  <Disclosure
+                    open
+                    summary={
+                      <>
+                        create argument <Muted>(typed)</Muted>
+                      </>
+                    }
+                  >
+                    <TypedFields fields={e.templateSchema.typedPayload} />
+                  </Disclosure>
+                ) : null}
+                {e.kind === "exercised" && e.choiceSchema ? (
+                  <div className="clds-muted">
+                    {e.choiceSchema.consuming ? "consuming" : "non-consuming"} · argument{" "}
+                    {e.choiceSchema.argType ? <Mono>{e.choiceSchema.argType}</Mono> : <NoType />}
+                    {(e.choiceSchema.argFields ?? []).length > 0
+                      ? `: ${(e.choiceSchema.argFields ?? []).map((f) => `${f.name}: ${f.type}`).join(", ")}`
+                      : ""}{" "}
+                    · returns{" "}
+                    {e.choiceSchema.returnType ? (
+                      <Mono>{e.choiceSchema.returnType}</Mono>
+                    ) : (
+                      <NoType />
+                    )}
+                  </div>
+                ) : null}
+                <RawJson
+                  label={e.kind === "created" ? "create argument (raw)" : "choice argument"}
+                  value={e.kind === "created" ? e.createArgument : e.choiceArgument}
+                />
+                {e.kind === "exercised" ? (
+                  <RawJson label="exercise result" value={e.exerciseResult} />
+                ) : null}
+                {e.schemaStatus && e.schemaStatus !== "ok" ? (
+                  <div className="clds-muted" title={e.schemaStatus}>
+                    schema: {saidSchema(e.schemaStatus)}
+                  </div>
+                ) : null}
               </div>
-            ) : null}
-            <RawJson
-              label={e.kind === "created" ? "create argument (raw)" : "choice argument"}
-              value={e.kind === "created" ? e.createArgument : e.choiceArgument}
-            />
-            {e.kind === "exercised" ? (
-              <RawJson label="exercise result" value={e.exerciseResult} />
-            ) : null}
-            {e.schemaStatus && e.schemaStatus !== "ok" ? (
-              <div className="clds-muted" title={e.schemaStatus}>
-                schema: {saidSchema(e.schemaStatus)}
-              </div>
-            ) : null}
+            </div>
           </td>
         </tr>
       ) : null}
