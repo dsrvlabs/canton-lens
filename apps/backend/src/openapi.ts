@@ -444,8 +444,10 @@ export const openApiDocument = {
             "UpdateDetailResponse",
             "The view of buildUpdateDetail(core). If kind is transaction, each event carries the " +
               "choice, template definitions read from the package schema (choiceSchema, templateSchema) and schemaStatus — if the schema " +
-              "cannot be read, only that event is null and Raw stays as is. If kind is not transaction (reassignment etc.), header only — " +
-              "the screen says “not in this version”.",
+              "cannot be read, only that event is null and Raw stays as is. Events keep the node order the participant sent and each " +
+              "carries its place in the transaction tree (tree.depth · tree.ancestorIndex · tree.descendantCount, derived from nodeId and " +
+              "lastDescendantNodeId); a client that ignores tree reads the same flat list. If kind is not transaction (reassignment etc.), " +
+              "header only — the screen says “not in this version”.",
           ),
           "400": failure(
             "invalid_path — if the updateId path segment does not decode (non-hex after a percent) it is 400.",

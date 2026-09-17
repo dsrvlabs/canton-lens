@@ -202,8 +202,11 @@ function Header({ v }: { v: Tx }) {
 }
 
 // Events — their own section, the full width of it. The events shown are against all my parties (no lens).
+// A transaction is a tree, and the rows are drawn as one: the order is the node order the participant sent, and an
+// event is indented under the exercise whose subtree it fell in (core's nestUpdateEvents did the placing).
 function Events({ v }: { v: Tx }) {
   const n = v.events.length;
+  const nested = v.events.some((e) => e.tree.depth > 0);
   return (
     <Section id="tx-events" title="Events" note={`${n} ${n === 1 ? "event" : "events"}`}>
       {n === 0 ? (
@@ -217,7 +220,7 @@ function Events({ v }: { v: Tx }) {
           <Table className="tx-events">
             <colgroup>
               <col style={{ width: 44 }} />
-              <col style={{ width: 168 }} />
+              <col style={{ width: 196 }} />
               <col style={{ width: "22%" }} />
               <col style={{ width: "20%" }} />
               <col />
@@ -239,6 +242,16 @@ function Events({ v }: { v: Tx }) {
           </Table>
         </Scroll>
       )}
+      {nested ? (
+        <SectionBody>
+          <Muted>
+            Indented by the transaction's node ids — an event stands under the exercise whose
+            subtree it fell in. Nodes you are not an informee on never arrive, so an event may stand
+            under an ancestor further up than its own parent; the row says which node it is and
+            which event it stands under.
+          </Muted>
+        </SectionBody>
+      ) : null}
     </Section>
   );
 }
@@ -247,7 +260,14 @@ function Events({ v }: { v: Tx }) {
 // witnesses), the lower row carries the arguments at full width.
 // The arguments (typed fields · Raw JSON) take their width from their content, and as a sixth column
 // they pushed the table out of its section.
+//
+// The indent is capped: past this many levels the rows would be pushed out of their column, and the line under
+// the badge (node · under #) names the place exactly, so nothing is lost by stopping the stagger.
+const INDENT_LEVELS = 6;
+const INDENT_STEP = 13;
+
 function EventRow({ e, i }: { e: TxEvent; i: number }) {
+  const { depth, ancestorIndex, descendantCount } = e.tree;
   const hasArgs =
     (e.kind === "created" && (e.templateSchema?.typedPayload || e.createArgument != null)) ||
     (e.kind === "exercised" &&
@@ -260,14 +280,36 @@ function EventRow({ e, i }: { e: TxEvent; i: number }) {
           <Mono className="clds-muted">{i}</Mono>
         </td>
         <td>
-          {e.kind === "created" ? (
-            <Badge tone="positive" shape="rounded" mono>
-              created
-            </Badge>
-          ) : (
-            <Badge tone="negative" shape="rounded" mono>
-              exercised{e.consuming ? " · consuming" : ""}
-            </Badge>
+          <div
+            className="tx-branch"
+            style={
+              depth > 0 ? { paddingLeft: Math.min(depth, INDENT_LEVELS) * INDENT_STEP } : undefined
+            }
+          >
+            {depth > 0 ? (
+              <span className="tx-branch__elbow" aria-hidden="true">
+                └
+              </span>
+            ) : null}
+            {e.kind === "created" ? (
+              <Badge tone="positive" shape="rounded" mono>
+                created
+              </Badge>
+            ) : (
+              <Badge tone="negative" shape="rounded" mono>
+                exercised{e.consuming ? " · consuming" : ""}
+              </Badge>
+            )}
+          </div>
+          {/* Where this row sits in the tree, in words — the indent shows it, this says it. */}
+          {e.nodeId === null && ancestorIndex === null && descendantCount === 0 ? null : (
+            <div className="clds-muted tx-branch__where">
+              {e.nodeId === null ? "node id not in this response" : `node ${e.nodeId}`}
+              {ancestorIndex === null ? null : ` · under #${ancestorIndex}`}
+              {descendantCount === 0
+                ? null
+                : ` · ${descendantCount} event${descendantCount === 1 ? "" : "s"} under it`}
+            </div>
           )}
         </td>
         <td>

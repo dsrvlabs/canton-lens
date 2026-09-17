@@ -498,6 +498,23 @@
 .tx-events .clds-badge .clds-inline {
   white-space: normal;
 }
+/* The transaction is a tree and the rows are read as one: the indent is the nesting, and the elbow says the
+   row is somebody's child. The elbow stays clear of the badge so the kind still reads first. */
+.tx-branch {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+.tx-branch__elbow {
+  color: var(--clds-color-ink-faint);
+  font-family: var(--clds-font-mono);
+  line-height: 1;
+}
+/* Which node it was, and whose child — the indent alone stops saying it once the levels are capped. */
+.tx-branch__where {
+  margin-top: var(--clds-space-1);
+  font-size: var(--clds-text-caption);
+}
 .clds-table tr.tx-event--open td {
   border-bottom: 0;
   padding-bottom: var(--clds-space-1);

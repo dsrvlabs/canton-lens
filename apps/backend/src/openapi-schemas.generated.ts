@@ -3526,6 +3526,12 @@ export const responseSchemas = {
       nodeId: {
         type: ["number", "null"],
       },
+      lastDescendantNodeId: {
+        type: ["number", "null"],
+      },
+      tree: {
+        $ref: "#/components/schemas/UpdateEventPlacement",
+      },
       contractId: {
         type: "string",
       },
@@ -3611,6 +3617,7 @@ export const responseSchemas = {
       "entity",
       "interfaceId",
       "kind",
+      "lastDescendantNodeId",
       "module",
       "nodeId",
       "observers",
@@ -3620,6 +3627,7 @@ export const responseSchemas = {
       "signatories",
       "templateId",
       "templateSchema",
+      "tree",
       "witnessParties",
     ],
   },
@@ -3760,6 +3768,22 @@ export const responseSchemas = {
         required: ["kind", "offset", "readAt", "updateId"],
       },
     ],
+  },
+  UpdateEventPlacement: {
+    type: "object",
+    properties: {
+      depth: {
+        type: "number",
+      },
+      ancestorIndex: {
+        type: ["number", "null"],
+      },
+      descendantCount: {
+        type: "number",
+      },
+    },
+    required: ["depth", "ancestorIndex", "descendantCount"],
+    additionalProperties: false,
   },
   UpdateFilter: {
     type: "object",
