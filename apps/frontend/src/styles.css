@@ -519,24 +519,39 @@
    leaf keeps the same width, so every badge in the column starts on one line. */
 .tx-caret {
   flex: none;
-  width: 13px;
-  height: 13px;
+  /* A hand-sized target. The mark inside stays small — what grows is the area that answers a click, which
+     at 13px square was a mark you had to aim at. */
+  width: 24px;
+  height: 24px;
+  margin: -6px 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   padding: 0;
   border: 0;
+  border-radius: var(--clds-radius-sm);
   background: none;
   color: var(--clds-color-ink-faint);
-  font-size: 9px;
+  font-size: 10px;
   line-height: 1;
   cursor: pointer;
 }
 .tx-caret:hover {
   color: var(--clds-color-ink);
+  background: var(--clds-color-field);
+}
+.tx-caret--more {
+  font-size: 12px;
 }
 .tx-caret--none {
   cursor: default;
+}
+.tx-caret--none:hover {
+  background: none;
+}
+/* The row opens its own details, so it says so under the pointer. */
+.tx-event--clickable {
+  cursor: pointer;
 }
 /* The detail row — everything about one event that its line could not hold. It is inset to the width of the
    ordinal column and set on the field ground, so it reads as belonging to the row above rather than as

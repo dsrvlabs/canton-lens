@@ -15,7 +15,7 @@ import {
   SectionBody,
   Table,
 } from "@canton-lens/design-system";
-import { useEffect, useRef, useState } from "react";
+import { type MouseEvent, useEffect, useRef, useState } from "react";
 import { messageOf } from "../api/client.ts";
 import { saidSchema } from "../api/said.ts";
 import type { TxEvent, TxResponse } from "../api/types.ts";
@@ -230,7 +230,9 @@ function Events({ v }: { v: Tx }) {
     return chain;
   };
   const withChildren = v.events.flatMap((e, i) => (e.tree.descendantCount > 0 ? [i] : []));
-  const lit = hovered === null ? [] : ancestorsOf(hovered);
+  // The row under the pointer lights with its ancestors — it opens on a click, so it has to answer the
+  // pointer before the click.
+  const lit = hovered === null ? [] : [hovered, ...ancestorsOf(hovered)];
   const toggle = (i: number) =>
     setFolded((was) => {
       const next = new Set(was);
@@ -284,7 +286,7 @@ function Events({ v }: { v: Tx }) {
               <col style={{ width: "26%" }} />
               <col style={{ width: "18%" }} />
               <col />
-              <col style={{ width: 36 }} />
+              <col style={{ width: 44 }} />
             </colgroup>
             <tbody>
               <tr>
@@ -362,9 +364,20 @@ function EventRow({
   const witnesses = e.witnessParties ?? [];
   const rowClass = (base: string) => `${base}${lit ? ` ${base}--lit` : ""}`;
   const hover = { onMouseEnter: () => onHover(i), onMouseLeave: () => onHover(null) };
+  // The whole row opens its details. What the row carries that does something of its own — the fold caret,
+  // a contract link, a Copy — keeps its own click; the row only answers for the space between them.
+  const openOnRowClick = (event: MouseEvent<HTMLTableRowElement>) => {
+    if ((event.target as HTMLElement).closest("a, button, input, [role='button']")) return;
+    if ((globalThis.getSelection?.()?.toString() ?? "") !== "") return;
+    setOpen(!open);
+  };
   return (
     <>
-      <tr className={`${rowClass("tx-event")}${open ? " tx-event--open" : ""}`} {...hover}>
+      <tr
+        className={`${rowClass("tx-event")} tx-event--clickable${open ? " tx-event--open" : ""}`}
+        onClick={openOnRowClick}
+        {...hover}
+      >
         <td>
           <Mono className="clds-muted">{i}</Mono>
         </td>
@@ -432,7 +445,7 @@ function EventRow({
         <td className="tx-cell tx-cell--end">
           <button
             type="button"
-            className="tx-caret"
+            className="tx-caret tx-caret--more"
             aria-expanded={open}
             aria-label={`${open ? "Hide" : "Show"} the details of event ${i}`}
             onClick={() => setOpen(!open)}
