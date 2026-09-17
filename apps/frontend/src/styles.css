@@ -595,13 +595,11 @@
    not painted row by row. */
 .clds-table > tbody > tr.tx-event--lit > td,
 .clds-table > tbody > tr.tx-args--lit > td {
-  background: var(--clds-color-field);
+  /* The same ground the design system gives a hovered row — the pair is one row as far as a reader is
+     concerned, so both halves take the colour the pointer earns. */
+  background: var(--clds-color-row-hover);
 }
-/* The two rows are one piece, so hover never paints just one half */
-.clds-table > tbody > tr.tx-args:hover > td,
-.clds-table > tbody > tr.tx-event:hover > td {
-  background: transparent;
-}
+
 /* Everything under an event — the typed fields, a value written out inline, a folded payload — keeps the
    same gap from the block above it, whichever kind either of them is. */
 .tx-args > td > * + * {
