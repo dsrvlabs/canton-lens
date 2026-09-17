@@ -280,11 +280,12 @@ function Events({ v }: { v: Tx }) {
           <Table className="tx-events">
             <colgroup>
               <col style={{ width: 44 }} />
-              {/* The tree column: the caret, the indent and the kind badge, wide enough for all three at
-                  the deepest indent the rows are allowed to take. */}
-              <col style={{ width: 236 }} />
-              <col style={{ width: "26%" }} />
-              <col style={{ width: "18%" }} />
+              {/* The tree column: the caret, the indent and the kind badge. Wide enough for all three at
+                  the first levels; deeper than that the badge clips, and the row's details still name the
+                  kind in full. */}
+              <col style={{ width: 300 }} />
+              <col style={{ width: "24%" }} />
+              <col style={{ width: "16%" }} />
               <col />
               <col style={{ width: 44 }} />
             </colgroup>
@@ -411,7 +412,16 @@ function EventRow({
                 exercised{e.consuming ? " · consuming" : ""}
               </Badge>
             )}
-            {folded ? <Muted>{descendantCount} folded</Muted> : null}
+            {folded ? (
+              // Short, because it shares a fixed column with the indent and the badge — the whole of it is
+              // in the title, and the row's details say it in words.
+              <Muted
+                className="tx-folded"
+                title={`${descendantCount} event${descendantCount === 1 ? "" : "s"} folded away under this one`}
+              >
+                +{descendantCount}
+              </Muted>
+            ) : null}
           </div>
         </td>
         <td className="tx-cell" title={e.choice ? `${e.templateId} · ${e.choice}` : e.templateId}>

@@ -514,6 +514,21 @@
   display: flex;
   align-items: center;
   gap: var(--clds-space-2);
+  min-width: 0;
+}
+/* When the indent leaves too little room, the badge gives way before the count does: the kind repeats down
+   the column and is in the details, the count of what is folded away is on this row alone. */
+.tx-lead .clds-badge {
+  min-width: 0;
+  overflow: hidden;
+}
+.tx-lead .clds-badge .clds-inline {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tx-folded {
+  flex: none;
 }
 /* The caret is the row's own affordance, so it takes no button chrome — only the mark, in the dim ink. A
    leaf keeps the same width, so every badge in the column starts on one line. */
