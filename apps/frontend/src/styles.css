@@ -607,6 +607,35 @@
 .tx-args > td > * + * {
   margin-top: var(--clds-space-2);
 }
+/* The informee lens — the parties named on this update, and how many of its events name each. Setting it
+   dims the rest rather than removing them: what is dimmed is still one of the transaction's events, and
+   taking it away would take the tree above it too. */
+.tx-lens {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--clds-space-3);
+  padding-bottom: 0;
+}
+/* The label is three pieces — the party, whether it is one of yours, and how many events name it — and a
+   flex button drops the whitespace between them, so the gap is set here. */
+.tx-lens button {
+  gap: var(--clds-space-3);
+}
+.tx-lens__count {
+  opacity: 0.65;
+}
+.tx-lens__mine {
+  font-size: var(--clds-text-caption);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.75;
+}
+.clds-table > tbody > tr.tx-event--dim > td,
+.clds-table > tbody > tr.tx-args--dim > td {
+  opacity: 0.35;
+}
+
 /* The payload in a row's details is read down the page, not compared column by column, so its columns hug
    what they hold: the field, its type, the value, one after the other. The first one keeps a margin: these
    rows light under the pointer, and without it the ground ran straight into the first letter of the field. */

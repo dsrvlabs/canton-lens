@@ -20,7 +20,7 @@ import { messageOf } from "../api/client.ts";
 import { saidSchema } from "../api/said.ts";
 import type { TxEvent, TxResponse } from "../api/types.ts";
 import { Chip, ContractLink, PartyChip, PartyList } from "../format/chips.tsx";
-import { short } from "../format/format.ts";
+import { short, shortParty } from "../format/format.ts";
 import { NoType, RawJson, TypedFields } from "../format/typed.tsx";
 import { useSession } from "../session/SessionContext.tsx";
 
@@ -218,6 +218,19 @@ function Events({ v }: { v: Tx }) {
   // Which row the pointer is on. Its ancestors light up with it — at four levels the rails alone leave you
   // counting stripes to find out whose child a row is.
   const [hovered, setHovered] = useState<number | null>(null);
+  // The party the lens is set to, if any. It **dims** rather than hides: an event the lens passes over is
+  // still one of this transaction's events, and hiding it would break the tree above it as well.
+  const [lens, setLens] = useState<string | null>(null);
+  const { myParties } = useSession();
+
+  // Every party named as an informee on the events shown, and how many of them name it. This is not "what
+  // that party can see" — it is what this reader can see with that party named on it.
+  const informees = new Map<string, number>();
+  for (const event of v.events)
+    for (const party of event.witnessParties ?? [])
+      informees.set(party, (informees.get(party) ?? 0) + 1);
+  const parties = [...informees.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  const lensCount = lens === null ? 0 : (informees.get(lens) ?? 0);
 
   const ancestorsOf = (i: number): number[] => {
     const chain: number[] = [];
@@ -274,48 +287,79 @@ function Events({ v }: { v: Tx }) {
           <Muted>No events to show</Muted>
         </SectionBody>
       ) : (
-        <Scroll>
-          {/* Column widths are fixed — under auto layout the sum of the nowrap chips' minimum widths
+        <>
+          {parties.length > 1 ? (
+            <SectionBody className="tx-lens">
+              <span className="clds-muted">Informee lens</span>
+              {parties.map(([party, count]) => (
+                <Button
+                  key={party}
+                  variant={lens === party ? "primary" : "outline"}
+                  aria-pressed={lens === party}
+                  title={myParties.includes(party) ? `${party} — one of your parties` : party}
+                  onClick={() => setLens(lens === party ? null : party)}
+                >
+                  <span>{shortParty(party)}</span>
+                  {myParties.includes(party) ? <span className="tx-lens__mine">you</span> : null}
+                  <span className="tx-lens__count">{count}</span>
+                </Button>
+              ))}
+              {/* What the lens does say, and what it does not. The events held here are the reader's own; a
+                party named on them is an informee on those, and nothing follows about the rest of its ledger. */}
+              {lens === null ? (
+                <Muted>— dim every event the chosen party is not an informee on</Muted>
+              ) : (
+                <Muted>
+                  — <b>{shortParty(lens)}</b> is an informee on {lensCount} of the {n} event
+                  {n === 1 ? "" : "s"} you can see. What it sees beyond them is not known here.
+                </Muted>
+              )}
+            </SectionBody>
+          ) : null}
+          <Scroll>
+            {/* Column widths are fixed — under auto layout the sum of the nowrap chips' minimum widths
               exceeds the section and the table breaks out of it sideways. */}
-          <Table className="tx-events">
-            <colgroup>
-              <col style={{ width: 44 }} />
-              {/* The tree column: the caret, the indent and the kind badge. Wide enough for all three at
+            <Table className="tx-events">
+              <colgroup>
+                <col style={{ width: 44 }} />
+                {/* The tree column: the caret, the indent and the kind badge. Wide enough for all three at
                   the first levels; deeper than that the badge clips, and the row's details still name the
                   kind in full. */}
-              <col style={{ width: 300 }} />
-              <col style={{ width: "24%" }} />
-              <col style={{ width: "16%" }} />
-              <col />
-              <col style={{ width: 44 }} />
-            </colgroup>
-            <tbody>
-              <tr>
-                <th>#</th>
-                <th>Event</th>
-                <th>Template / choice</th>
-                <th>Contract</th>
-                <th>Witnesses</th>
-                <th />
-              </tr>
-              {v.events.map((e, i) =>
-                ancestorsOf(i).some((a) => folded.has(a)) ? null : (
-                  <EventRow
-                    // An event's identity is its index (#) within the update — the screen writes that number too.
-                    // biome-ignore lint/suspicious/noArrayIndexKey: the index is the name
-                    key={i}
-                    e={e}
-                    i={i}
-                    folded={folded.has(i)}
-                    lit={lit.includes(i)}
-                    onToggle={() => toggle(i)}
-                    onHover={setHovered}
-                  />
-                ),
-              )}
-            </tbody>
-          </Table>
-        </Scroll>
+                <col style={{ width: 300 }} />
+                <col style={{ width: "24%" }} />
+                <col style={{ width: "16%" }} />
+                <col />
+                <col style={{ width: 44 }} />
+              </colgroup>
+              <tbody>
+                <tr>
+                  <th>#</th>
+                  <th>Event</th>
+                  <th>Template / choice</th>
+                  <th>Contract</th>
+                  <th>Witnesses</th>
+                  <th />
+                </tr>
+                {v.events.map((e, i) =>
+                  ancestorsOf(i).some((a) => folded.has(a)) ? null : (
+                    <EventRow
+                      // An event's identity is its index (#) within the update — the screen writes that number too.
+                      // biome-ignore lint/suspicious/noArrayIndexKey: the index is the name
+                      key={i}
+                      e={e}
+                      i={i}
+                      folded={folded.has(i)}
+                      lit={lit.includes(i)}
+                      dim={lens !== null && !(e.witnessParties ?? []).includes(lens)}
+                      onToggle={() => toggle(i)}
+                      onHover={setHovered}
+                    />
+                  ),
+                )}
+              </tbody>
+            </Table>
+          </Scroll>
+        </>
       )}
       {nested ? (
         <SectionBody>
@@ -348,6 +392,7 @@ function EventRow({
   i,
   folded,
   lit,
+  dim,
   onToggle,
   onHover,
 }: {
@@ -357,13 +402,16 @@ function EventRow({
   folded: boolean;
   // The pointer is on this event or on something under it.
   lit: boolean;
+  // The lens is set to a party this event does not name — it stays, quietly.
+  dim: boolean;
   onToggle: () => void;
   onHover: (i: number | null) => void;
 }) {
   const { depth, descendantCount } = e.tree;
   const [open, setOpen] = useState(false);
   const witnesses = e.witnessParties ?? [];
-  const rowClass = (base: string) => `${base}${lit ? ` ${base}--lit` : ""}`;
+  const rowClass = (base: string) =>
+    `${base}${lit ? ` ${base}--lit` : ""}${dim ? ` ${base}--dim` : ""}`;
   const hover = { onMouseEnter: () => onHover(i), onMouseLeave: () => onHover(null) };
   // The whole row opens its details. What the row carries that does something of its own — the fold caret,
   // a contract link, a Copy — keeps its own click; the row only answers for the space between them.
