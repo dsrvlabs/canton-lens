@@ -608,9 +608,17 @@
   margin-top: var(--clds-space-2);
 }
 /* The payload in a row's details is read down the page, not compared column by column, so its columns hug
-   what they hold: the field, its type, the value, one after the other. */
+   what they hold: the field, its type, the value, one after the other. The first one keeps a margin: these
+   rows light under the pointer, and without it the ground ran straight into the first letter of the field. */
 .tx-detail .clds-table--fields td {
   padding-right: var(--clds-space-5);
+}
+.tx-detail .clds-table--fields td:first-child {
+  padding-left: var(--clds-space-4);
+}
+/* The payload is set under the summary that opens it, not against the detail's own edge. */
+.tx-detail .clds-disclosure > *:not(summary) {
+  padding-left: var(--clds-space-4);
 }
 
 
