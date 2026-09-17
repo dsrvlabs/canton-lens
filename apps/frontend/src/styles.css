@@ -529,8 +529,9 @@
 .clds-table tr.tx-event:hover td {
   background: transparent;
 }
-.tx-args .clds-disclosure + .clds-disclosure,
-.tx-args .clds-muted + .clds-disclosure {
+/* Everything under an event — the typed fields, a value written out inline, a folded payload — keeps the
+   same gap from the block above it, whichever kind either of them is. */
+.tx-args > td > * + * {
   margin-top: var(--clds-space-2);
 }
 

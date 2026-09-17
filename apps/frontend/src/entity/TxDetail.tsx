@@ -332,8 +332,10 @@ function EventRow({ e, i }: { e: TxEvent; i: number }) {
               {e.consuming ? (
                 <>
                   {" "}
-                  <Muted>
-                    archived by this — no detail page; archived contracts are not in this view
+                  {/* The long form of this sat in a 20%-wide column and pushed the row three lines tall for
+                      a sentence that says the same thing on every consuming event. */}
+                  <Muted title="An archived contract is not in this view, so there is no detail page to open.">
+                    archived by this
                   </Muted>
                 </>
               ) : null}
