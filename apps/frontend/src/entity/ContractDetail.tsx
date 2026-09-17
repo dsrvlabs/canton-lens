@@ -77,7 +77,7 @@ export function ContractDetail({ contractId }: { contractId: string }) {
           <dt>Package</dt>
           <dd>
             <b>{v.packageName}</b>{" "}
-            <Disclosure summary="hash" style={{ display: "inline-block", marginLeft: 8 }}>
+            <Disclosure summary="hash" className="clds-disclosure-inline">
               <Chip value={v.packageId} n={20} />
             </Disclosure>{" "}
             {sc.status === "ok" && sc.packageVersion ? (
