@@ -569,12 +569,13 @@
   cursor: pointer;
 }
 /* The detail row — everything about one event that its line could not hold. It is inset to the width of the
-   ordinal column and set on the field ground, so it reads as belonging to the row above rather than as
-   another row of the table. */
-.clds-table tr.tx-event--open td {
+   ordinal column, so it reads as belonging to the row above rather than as another row of the table.
+   **The child combinator is load-bearing**: these cells hold tables of their own (the typed payload), and a
+   descendant selector put this row's inset on every cell inside them — 62px of padding per field. */
+.clds-table > tbody > tr.tx-event--open > td {
   border-bottom: 0;
 }
-.clds-table tr.tx-args td {
+.clds-table > tbody > tr.tx-args > td {
   padding-top: 0;
   padding-bottom: var(--clds-space-6);
   padding-inline-start: calc(var(--clds-space-8) + 44px);
@@ -590,20 +591,26 @@
   margin: 0;
 }
 /* The row under the pointer and the events it stands under are lit together — the indent alone does not say
-   whose child a row is once the tree is three levels deep. The pair (row + its open detail) is lit as one. */
-.clds-table tr.tx-event--lit td,
-.clds-table tr.tx-args--lit td {
+   whose child a row is once the tree is three levels deep. The pair (row + its open detail) is lit as one.
+   Direct children again, so a payload's own table is not painted row by row. */
+.clds-table > tbody > tr.tx-event--lit > td,
+.clds-table > tbody > tr.tx-args--lit > td {
   background: var(--clds-color-field);
 }
 /* The two rows are one piece, so hover never paints just one half */
-.clds-table tr.tx-args:hover td,
-.clds-table tr.tx-event:hover td {
+.clds-table > tbody > tr.tx-args:hover > td,
+.clds-table > tbody > tr.tx-event:hover > td {
   background: transparent;
 }
 /* Everything under an event — the typed fields, a value written out inline, a folded payload — keeps the
    same gap from the block above it, whichever kind either of them is. */
 .tx-args > td > * + * {
   margin-top: var(--clds-space-2);
+}
+/* The payload in a row's details is read down the page, not compared column by column, so its columns hug
+   what they hold: the field, its type, the value, one after the other. */
+.tx-detail .clds-table--fields td {
+  padding-right: var(--clds-space-5);
 }
 
 
