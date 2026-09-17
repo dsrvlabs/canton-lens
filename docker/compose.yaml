@@ -28,6 +28,7 @@ services:
       args:
         - VITE_AUTH_MODE=${VITE_AUTH_MODE:?set VITE_AUTH_MODE to browser-oidc, shared-identity or institution-bff in docker/.env — see docker/.env.example}
         - VITE_OIDC_ISSUER
+        - VITE_PUBLIC_URL
         - VITE_OIDC_CLIENT_ID
         - VITE_OIDC_REDIRECT_URI
         - VITE_OIDC_POST_LOGOUT_REDIRECT_URI
