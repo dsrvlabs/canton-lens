@@ -5,6 +5,7 @@
 import {
   Badge,
   Banner,
+  Button,
   DescriptionList,
   Disclosure,
   Mono,
@@ -99,7 +100,10 @@ export function TxDetail({ target }: { target: TxRef }) {
           </SectionBody>
         )}
       </Section>
-      {v !== null && error === null && v.kind === "transaction" ? <Events v={v} /> : null}
+      {/* Keyed by the update — what a reader folded away on one transaction means nothing on the next. */}
+      {v !== null && error === null && v.kind === "transaction" ? (
+        <Events key={v.header.updateId} v={v} />
+      ) : null}
     </>
   );
 }
@@ -207,8 +211,62 @@ function Header({ v }: { v: Tx }) {
 function Events({ v }: { v: Tx }) {
   const n = v.events.length;
   const nested = v.events.some((e) => e.tree.depth > 0);
+  // The events folded away, by index. Folding hides a subtree, never an event on its own — what is hidden is
+  // always named on the row that hides it ("6 events under it, folded"), because a reader must not have to
+  // guess that the list is short of something.
+  const [folded, setFolded] = useState<ReadonlySet<number>>(() => new Set<number>());
+  // Which row the pointer is on. Its ancestors light up with it — at four levels the rails alone leave you
+  // counting stripes to find out whose child a row is.
+  const [hovered, setHovered] = useState<number | null>(null);
+
+  const ancestorsOf = (i: number): number[] => {
+    const chain: number[] = [];
+    for (let at = v.events[i]?.tree.ancestorIndex ?? null; at !== null; )
+      if (chain.includes(at)) break;
+      else {
+        chain.push(at);
+        at = v.events[at]?.tree.ancestorIndex ?? null;
+      }
+    return chain;
+  };
+  const withChildren = v.events.flatMap((e, i) => (e.tree.descendantCount > 0 ? [i] : []));
+  const lit = hovered === null ? [] : ancestorsOf(hovered);
+  const toggle = (i: number) =>
+    setFolded((was) => {
+      const next = new Set(was);
+      if (!next.delete(i)) next.add(i);
+      return next;
+    });
+
   return (
-    <Section id="tx-events" title="Events" note={`${n} ${n === 1 ? "event" : "events"}`}>
+    <Section
+      id="tx-events"
+      title="Events"
+      note={
+        <>
+          {withChildren.length > 0 ? (
+            <>
+              <Button
+                variant="plain"
+                onClick={() => setFolded(new Set<number>())}
+                disabled={folded.size === 0}
+              >
+                Expand all
+              </Button>{" "}
+              <Button
+                variant="plain"
+                onClick={() => setFolded(new Set(withChildren))}
+                disabled={folded.size === withChildren.length}
+              >
+                Roots only
+              </Button>{" "}
+              ·{" "}
+            </>
+          ) : null}
+          {`${n} ${n === 1 ? "event" : "events"}`}
+        </>
+      }
+    >
       {n === 0 ? (
         <SectionBody>
           <Muted>No events to show</Muted>
@@ -220,7 +278,9 @@ function Events({ v }: { v: Tx }) {
           <Table className="tx-events">
             <colgroup>
               <col style={{ width: 44 }} />
-              <col style={{ width: 196 }} />
+              {/* Wide enough for the rails, the caret and the kind badge side by side — under that the badge
+                  ran into the template beside it once an event was two levels deep. */}
+              <col style={{ width: 248 }} />
               <col style={{ width: "22%" }} />
               <col style={{ width: "20%" }} />
               <col />
@@ -233,11 +293,22 @@ function Events({ v }: { v: Tx }) {
                 <th>Contract</th>
                 <th>Witnesses</th>
               </tr>
-              {v.events.map((e, i) => (
-                // An event's identity is its index (#) within the update — the screen writes that number too.
-                // biome-ignore lint/suspicious/noArrayIndexKey: the index is the name
-                <EventRow key={i} e={e} i={i} rails={railsOf(v.events, i)} />
-              ))}
+              {v.events.map((e, i) =>
+                ancestorsOf(i).some((a) => folded.has(a)) ? null : (
+                  <EventRow
+                    // An event's identity is its index (#) within the update — the screen writes that number too.
+                    // biome-ignore lint/suspicious/noArrayIndexKey: the index is the name
+                    key={i}
+                    e={e}
+                    i={i}
+                    rails={railsOf(v.events, i)}
+                    folded={folded.has(i)}
+                    lit={lit.includes(i)}
+                    onToggle={() => toggle(i)}
+                    onHover={setHovered}
+                  />
+                ),
+              )}
             </tbody>
           </Table>
         </Scroll>
@@ -248,7 +319,8 @@ function Events({ v }: { v: Tx }) {
             Indented by the transaction's node ids — an event stands under the exercise whose
             subtree it fell in. Nodes you are not an informee on never arrive, so an event may stand
             under an ancestor further up than its own parent; the row says which node it is and
-            which event it stands under.
+            which event it stands under. Folding an exercise hides its subtree and nothing else —
+            the row that hides it counts what went with it.
           </Muted>
         </SectionBody>
       ) : null}
@@ -284,16 +356,39 @@ function railsOf(events: readonly TxEvent[], i: number): boolean[] {
   return rails.slice(0, INDENT_LEVELS);
 }
 
-function EventRow({ e, i, rails }: { e: TxEvent; i: number; rails: boolean[] }) {
+function EventRow({
+  e,
+  i,
+  rails,
+  folded,
+  lit,
+  onToggle,
+  onHover,
+}: {
+  e: TxEvent;
+  i: number;
+  rails: boolean[];
+  // This event's own subtree is hidden.
+  folded: boolean;
+  // The pointer is on this event or on something under it.
+  lit: boolean;
+  onToggle: () => void;
+  onHover: (i: number | null) => void;
+}) {
   const { ancestorIndex, descendantCount } = e.tree;
   const hasArgs =
     (e.kind === "created" && (e.templateSchema?.typedPayload || e.createArgument != null)) ||
     (e.kind === "exercised" &&
       (e.choiceSchema || e.choiceArgument != null || e.exerciseResult != null)) ||
     (e.schemaStatus && e.schemaStatus !== "ok");
+  const rowClass = (base: string) => `${base}${lit ? ` ${base}--lit` : ""}`;
   return (
     <>
-      <tr className={hasArgs ? "tx-event tx-event--open" : "tx-event"}>
+      <tr
+        className={`${rowClass("tx-event")}${hasArgs ? " tx-event--open" : ""}`}
+        onMouseEnter={() => onHover(i)}
+        onMouseLeave={() => onHover(null)}
+      >
         <td>
           <Mono className="clds-muted">{i}</Mono>
         </td>
@@ -319,15 +414,33 @@ function EventRow({ e, i, rails }: { e: TxEvent; i: number; rails: boolean[] }) 
               />
             ))}
             <div className="tx-nest__body">
-              {e.kind === "created" ? (
-                <Badge tone="positive" shape="rounded" mono>
-                  created
-                </Badge>
-              ) : (
-                <Badge tone="negative" shape="rounded" mono>
-                  exercised{e.consuming ? " · consuming" : ""}
-                </Badge>
-              )}
+              <div className="tx-nest__head">
+                {descendantCount > 0 ? (
+                  <button
+                    type="button"
+                    className="tx-nest__caret"
+                    aria-expanded={!folded}
+                    aria-label={`${folded ? "Show" : "Hide"} the ${descendantCount} event${
+                      descendantCount === 1 ? "" : "s"
+                    } under event ${i}`}
+                    onClick={onToggle}
+                  >
+                    <span aria-hidden="true">{folded ? "▸" : "▾"}</span>
+                  </button>
+                ) : (
+                  /* The gap a caret would take, so the badges of leaves and parents start on one line. */
+                  <span className="tx-nest__caret tx-nest__caret--none" aria-hidden="true" />
+                )}
+                {e.kind === "created" ? (
+                  <Badge tone="positive" shape="rounded" mono>
+                    created
+                  </Badge>
+                ) : (
+                  <Badge tone="negative" shape="rounded" mono>
+                    exercised{e.consuming ? " · consuming" : ""}
+                  </Badge>
+                )}
+              </div>
               {/* Where this row sits in the tree, in words — the rails show it, this says it. */}
               {e.nodeId === null && ancestorIndex === null && descendantCount === 0 ? null : (
                 <div className="clds-muted tx-nest__where">
@@ -335,7 +448,9 @@ function EventRow({ e, i, rails }: { e: TxEvent; i: number; rails: boolean[] }) 
                   {ancestorIndex === null ? null : ` · under #${ancestorIndex}`}
                   {descendantCount === 0
                     ? null
-                    : ` · ${descendantCount} event${descendantCount === 1 ? "" : "s"} under it`}
+                    : ` · ${descendantCount} event${descendantCount === 1 ? "" : "s"} under it${
+                        folded ? ", folded" : ""
+                      }`}
                 </div>
               )}
             </div>
@@ -381,7 +496,11 @@ function EventRow({ e, i, rails }: { e: TxEvent; i: number; rails: boolean[] }) 
         </td>
       </tr>
       {hasArgs ? (
-        <tr className="tx-args">
+        <tr
+          className={rowClass("tx-args")}
+          onMouseEnter={() => onHover(i)}
+          onMouseLeave={() => onHover(null)}
+        >
           <td colSpan={5}>
             {/* The payload row carries the rails on past it — the line to an event's children has to cross
                 its own arguments, or the tree breaks in two everywhere a payload is open. The gutter also
@@ -397,8 +516,9 @@ function EventRow({ e, i, rails }: { e: TxEvent; i: number; rails: boolean[] }) 
               ))}
               <div className="tx-nest__body">
                 {e.kind === "created" && e.templateSchema?.typedPayload ? (
+                  /* A payload opens when it is asked for. Left open, four fields per create pushed the
+                     rows so far apart that the tree between them could not be followed. */
                   <Disclosure
-                    open
                     summary={
                       <>
                         create argument <Muted>(typed)</Muted>

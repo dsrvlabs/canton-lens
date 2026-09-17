@@ -553,7 +553,35 @@
 }
 .tx-nest__body {
   min-width: 0;
-  padding-left: var(--clds-space-2);
+  padding-left: var(--clds-space-1);
+}
+.tx-nest__head {
+  display: flex;
+  align-items: center;
+  gap: var(--clds-space-1);
+}
+/* The fold control. It is the row's own affordance, so it takes no button chrome — only the caret, in the
+   dim ink, turning where a disclosure's does. A leaf keeps the same width so every badge starts on one line. */
+.tx-nest__caret {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--clds-color-ink-dim);
+  font-size: var(--clds-text-caption);
+  line-height: 1;
+  cursor: pointer;
+}
+.tx-nest__caret:hover {
+  color: var(--clds-color-ink);
+}
+.tx-nest__caret--none {
+  cursor: default;
 }
 /* Which node it was, and whose child — the rails alone stop saying it once the levels are capped. */
 .tx-nest__where {
@@ -569,6 +597,17 @@
   /* Indented by the width of the ordinal column — so it shows whose arguments these are. A nested event's
      row adds its own depth to this (TxDetail), so a payload is never read as its parent's. */
   padding-inline-start: var(--clds-space-8);
+}
+/* The row under the pointer and the events it stands under are lit together — at four levels the rails
+   alone leave you counting stripes to find out whose child a row is. The pair (event + its payload) is lit
+   as one, and the rails of the lit rows come forward with it. */
+.clds-table tr.tx-event--lit td,
+.clds-table tr.tx-args--lit td {
+  background: var(--clds-color-field);
+}
+.tx-event--lit .tx-nest,
+.tx-args--lit .tx-nest {
+  --tx-rail-ink: var(--clds-color-ink-dim);
 }
 /* The two rows are one piece, so hover never paints just one half */
 .clds-table tr.tx-args:hover td,
