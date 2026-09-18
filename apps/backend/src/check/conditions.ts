@@ -89,7 +89,11 @@ function witnessedHere(
   return seen.trace.some((call) =>
     [...everyRecord(call.answer)].some((event) => {
       if (!Array.isArray(event.witnessParties) || !Array.isArray(event.signatories)) return false;
-      const stakeholders = new Set([...arr(event.signatories), ...arr(event.observers)]);
+      const stakeholders = new Set(
+        [...arr(event.signatories), ...arr(event.observers)].filter(
+          (party): party is string => typeof party === "string",
+        ),
+      );
       return arr(event.witnessParties).some(
         (who) => typeof who === "string" && mine.has(who) && how(stakeholders, who),
       );
