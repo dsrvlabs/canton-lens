@@ -693,23 +693,27 @@
 .tx-seg__opt[aria-pressed="true"] {
   background: var(--clds-color-field);
   color: var(--clds-color-ink);
-  font-weight: var(--clds-weight-bold);
+  font-weight: var(--clds-weight-semibold);
+}
+.tx-head-count {
+  margin-inline-start: var(--clds-space-4);
 }
 
-/* The head of a witness group under the views cut — the line where Canton would cut a view. It is a band
-   across the table rather than a row of cells, because what it names belongs to all of them. */
+/* The head of a witness group under the views cut — a band on the field ground, in the table's own columns:
+   the name where the events are, the recipients under Witnesses, the reader's standing under You. */
 .clds-table > tbody > tr.tx-view > td {
   padding-top: var(--clds-space-6);
-  padding-bottom: var(--clds-space-3);
+  padding-bottom: var(--clds-space-6);
   border-bottom: 1px solid var(--clds-color-rule);
   background: var(--clds-color-field);
+  font-size: var(--clds-text-note);
+  vertical-align: middle;
 }
-.tx-view__head {
+.tx-view__title {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--clds-space-3);
-  font-size: var(--clds-text-note);
 }
 
 /* The detail row — everything about one event that its line could not hold. It is inset to the width of the

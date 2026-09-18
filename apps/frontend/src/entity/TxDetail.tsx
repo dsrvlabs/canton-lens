@@ -406,7 +406,7 @@ function Events({ v }: { v: Tx }) {
                 <col style={{ width: 150 }} />
                 {/* Where the reader stands. A column of its own, because "and me?" is asked down the table
                     rather than of one row at a time. */}
-                <col style={{ width: 108 }} />
+                <col style={{ width: 150 }} />
                 {/* The chevron's column. Wide enough that the control sits in a column of its own rather than
                     against the table's edge. */}
                 <col style={{ width: 56 }} />
@@ -418,7 +418,11 @@ function Events({ v }: { v: Tx }) {
                   <th>Template / choice</th>
                   <th>Contract</th>
                   <th>Witnesses</th>
-                  <th>You</th>
+                  {/* Named for what the cell holds — a capacity — not for whose it is. "You" on its own read as
+                      a question. */}
+                  <th title="In what capacity your own party is on this event: signatory, observer, controller, or witness — divulged, when a create reached you without your standing on it.">
+                    Your role
+                  </th>
                   <th />
                 </tr>
                 {rows.map((row) =>
@@ -506,31 +510,49 @@ function ViewGroupRow({
   standing: string[];
 }) {
   const count = group.eventIndexes.length;
+  // The band keeps the table's columns: what it is stands where the events stand, who received it under
+  // Witnesses, where the reader stands under You. As one cell across the table it ignored every column the
+  // rows below it were lined up on.
   return (
     <tr className="tx-view">
-      <td colSpan={7}>
+      <td />
+      <td className="tx-cell">
         <div
-          className="tx-view__head"
+          className="tx-view__title"
           style={{ paddingInlineStart: Math.min(group.depth, INDENT_LEVELS) * INDENT_STEP }}
         >
           <b>view {n}</b>
           {again ? <Muted>continued</Muted> : null}
           <Muted>
-            {count} event{count === 1 ? "" : "s"} · received by
+            {count} event{count === 1 ? "" : "s"}
           </Muted>
-          <PartyList values={group.witnesses} />
-          {standing.length === 0 ? null : (
-            <>
-              <Muted>· you</Muted>
-              {standing.map((role) => (
-                <Badge key={role} tone="accent" shape="rounded">
-                  {role}
-                </Badge>
-              ))}
-            </>
-          )}
         </div>
       </td>
+      <td className="tx-cell" colSpan={2} />
+      <td className="tx-cell" title={group.witnesses.join("\n")}>
+        {/* The same shape the rows use — first party and a count — so the band is two lines like them, not a
+            stack of chips. The column head already says these are the witnesses; the full list is the title. */}
+        {group.witnesses.length === 0 ? (
+          <Muted>none</Muted>
+        ) : (
+          <>
+            <PartyChip value={group.witnesses[0] ?? ""} />
+            {group.witnesses.length > 1 ? <Muted> +{group.witnesses.length - 1}</Muted> : null}
+          </>
+        )}
+      </td>
+      <td className="tx-cell">
+        {standing.length === 0 ? null : (
+          <span className="tx-standing">
+            {standing.map((role) => (
+              <Badge key={role} tone="accent" shape="rounded" className="tx-you">
+                {role}
+              </Badge>
+            ))}
+          </span>
+        )}
+      </td>
+      <td />
     </tr>
   );
 }
@@ -553,7 +575,7 @@ function YourStanding({ e }: { e: TxEvent }) {
       title={yours.map((r) => `${r.party} — ${r.roles.join(", ")}`).join("\n")}
     >
       {roles.map((role) => (
-        <Badge key={role} tone="accent" shape="rounded">
+        <Badge key={role} tone="accent" shape="rounded" className="tx-you">
           {role === "witness" && divulged ? "divulged" : role}
         </Badge>
       ))}
