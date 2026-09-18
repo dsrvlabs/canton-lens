@@ -564,30 +564,21 @@
 .tx-rail--line {
   border-left: 1px solid var(--tx-rail-ink);
 }
-/* Nothing left at that level — the space is kept so the levels stay in their columns. */
-.tx-rail--blank {
-  border: 0;
-}
 /* The turn into this row: down from the top, then across. Rounded, so the corner reads as one stroke. */
 .tx-rail--elbow {
   bottom: auto;
-  height: calc(50% + 1px);
+  /* The arm reaches to the edge of the caret's box — the mark itself sits inset, so there is still air. */
+  width: 14px;
+  height: calc(var(--tx-rail-join) + 1px);
   border-left: 1px solid var(--tx-rail-ink);
   border-bottom: 1px solid var(--tx-rail-ink);
-  border-bottom-left-radius: 6px;
-}
-/* …and on past it, when the parent has more events below this one. */
-.tx-rail--through::after {
-  content: "";
-  position: absolute;
-  left: -1px;
-  top: 0;
-  height: 200%;
-  border-left: 1px solid var(--tx-rail-ink);
+  /* As round as the arm is long — a corner that is only a little rounded reads as a hook. */
+  border-bottom-left-radius: 10px;
 }
 /* A row with events of its own: the line leaves it downwards, from the middle to the row below. */
 .tx-rail--down {
-  top: 50%;
+  /* Leaves from under the caret, not out of it — the caret's own half plus a breath of air. */
+  top: calc(var(--tx-rail-join) + 16px);
   border-left: 1px solid var(--tx-rail-ink);
 }
 /* The payload row of an open event is part of the same run, so the lines cross it too. */
