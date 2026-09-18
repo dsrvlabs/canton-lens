@@ -768,7 +768,16 @@ function EventRow({
       </tr>
       {showDetails ? (
         <tr className={rowClass("tx-args")} {...hover}>
-          <td className="tx-cell--tree" colSpan={7}>
+          <td
+            className="tx-cell--tree"
+            colSpan={7}
+            // The payload stands one level in from its row, past every rail that crosses it — the same place
+            // the row's children start — so the lines run beside it rather than through its first letters.
+            style={{
+              paddingInlineStart:
+                ORDINAL_WIDTH + (Math.min(depth, INDENT_LEVELS) + 1) * INDENT_STEP + RAIL_CENTRE,
+            }}
+          >
             {/* The payload row stands between an event and the events under it, so the lines cross it. The
                 connector's level carries on only where the parent has more children after this one, and the
                 row's own level carries on when it has children of its own showing. */}

@@ -535,6 +535,9 @@
    which is the difference between a tree and a column of marks that happen to be indented. */
 .tx-cell--tree {
   position: relative;
+  /* Darker than the table's own rules — the rails are the one line here that has to be followed, and at the
+     rules' weight they read as more of the table. */
+  --tx-rail-ink: color-mix(in srgb, var(--clds-color-ink-faint) 70%, transparent);
 }
 .tx-rail {
   position: absolute;
@@ -543,12 +546,12 @@
   top: -1px;
   bottom: -1px;
   width: 12px;
-  border-color: var(--clds-color-rule);
+  border-color: var(--tx-rail-ink);
   pointer-events: none;
 }
 /* An ancestor with events still below this row: its line passes straight through. */
 .tx-rail--line {
-  border-left: 1px solid var(--clds-color-rule);
+  border-left: 1px solid var(--tx-rail-ink);
 }
 /* Nothing left at that level — the space is kept so the levels stay in their columns. */
 .tx-rail--blank {
@@ -558,8 +561,8 @@
 .tx-rail--elbow {
   bottom: auto;
   height: calc(50% + 1px);
-  border-left: 1px solid var(--clds-color-rule);
-  border-bottom: 1px solid var(--clds-color-rule);
+  border-left: 1px solid var(--tx-rail-ink);
+  border-bottom: 1px solid var(--tx-rail-ink);
   border-bottom-left-radius: 6px;
 }
 /* …and on past it, when the parent has more events below this one. */
@@ -569,12 +572,12 @@
   left: -1px;
   top: 0;
   height: 200%;
-  border-left: 1px solid var(--clds-color-rule);
+  border-left: 1px solid var(--tx-rail-ink);
 }
 /* A row with events of its own: the line leaves it downwards, from the middle to the row below. */
 .tx-rail--down {
   top: 50%;
-  border-left: 1px solid var(--clds-color-rule);
+  border-left: 1px solid var(--tx-rail-ink);
 }
 /* The payload row of an open event is part of the same run, so the lines cross it too. */
 .tx-args .tx-rail {
