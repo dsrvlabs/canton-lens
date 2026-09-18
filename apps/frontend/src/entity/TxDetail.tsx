@@ -2,6 +2,8 @@
 // window as long as the participant keeps it; a pruned past the server names pruned. Arguments are Raw
 // JSON from here on — the decoder is "more human words", not a precondition for showing them. The
 // signed hash is not shown merged with the update id (it gets its own row).
+
+import { groupUpdateViews, type UpdateViewGroup } from "@canton-lens/core";
 import {
   Badge,
   Banner,
@@ -238,6 +240,23 @@ function Events({ v }: { v: Tx }) {
   const lensDivulged =
     lens === null ? 0 : v.events.filter((e) => (e.divulgedTo ?? []).includes(lens)).length;
 
+  // Which cut the rows are read by. "tree" is the transaction as the node sent it; "views" cuts it where the
+  // set of parties changes, which is where Canton cuts a transaction into views and encrypts each one to its
+  // own informees. What this can claim about that is in groupUpdateViews (core) and said under the table.
+  const [cut, setCut] = useState<"tree" | "views">("tree");
+  const groups = groupUpdateViews(v.events);
+  const groupOfEvent: number[] = [];
+  groups.forEach((group, index) => {
+    for (const event of group.eventIndexes) groupOfEvent[event] = index;
+  });
+
+  // Every capacity the reader's parties hold somewhere in a group, folded into one list.
+  const standingIn = (group: UpdateViewGroup): string[] => [
+    ...new Set(
+      group.eventIndexes.flatMap((i) => (v.events[i]?.yours ?? []).flatMap((r) => r.roles)),
+    ),
+  ];
+
   const ancestorsOf = (i: number): number[] => {
     const chain: number[] = [];
     for (let at = v.events[i]?.tree.ancestorIndex ?? null; at !== null; )
@@ -261,32 +280,75 @@ function Events({ v }: { v: Tx }) {
       return next;
     });
 
+  // What the table prints, in order: the events a fold has not hidden, and — under the views cut — a head
+  // wherever the group changes. A group is a region of the tree, so the events in it need not be next to one
+  // another; where one resumes after another the head says so rather than pretending it is a new one.
+  type Row = { kind: "event" | "group"; at: number; group: number; again: boolean };
+  const rows: Row[] = [];
+  const opened = new Set<number>();
+  let printing: number | null = null;
+  v.events.forEach((_, i) => {
+    if (ancestorsOf(i).some((a) => folded.has(a))) return;
+    const group = groupOfEvent[i] ?? 0;
+    if (cut === "views" && group !== printing) {
+      rows.push({ kind: "group", at: i, group, again: opened.has(group) });
+      opened.add(group);
+      printing = group;
+    }
+    rows.push({ kind: "event", at: i, group, again: false });
+  });
+
   return (
     <Section
       id="tx-events"
       title="Events"
       note={
         <>
+          {/* Two choices, each of two: how the rows are cut, and how much of the tree is open. Each pair is
+              one control, so the head reads as two questions rather than four words. The one in use is not
+              disabled — a disabled control is drawn as the one you cannot have, and here it is the one you are
+              looking at; aria-pressed says which. */}
+          {n > 1 ? (
+            <fieldset className="tx-seg" aria-label="Cut">
+              <button
+                type="button"
+                className="tx-seg__opt"
+                aria-pressed={cut === "tree"}
+                onClick={() => setCut("tree")}
+              >
+                Tree
+              </button>
+              <button
+                type="button"
+                className="tx-seg__opt"
+                aria-pressed={cut === "views"}
+                onClick={() => setCut("views")}
+              >
+                Views
+              </button>
+            </fieldset>
+          ) : null}
           {withChildren.length > 0 ? (
-            <>
-              <Button
-                variant="plain"
+            <fieldset className="tx-seg" aria-label="Folding">
+              <button
+                type="button"
+                className="tx-seg__opt"
+                aria-pressed={folded.size === 0}
                 onClick={() => setFolded(new Set<number>())}
-                disabled={folded.size === 0}
               >
                 Expand all
-              </Button>{" "}
-              <Button
-                variant="plain"
+              </button>
+              <button
+                type="button"
+                className="tx-seg__opt"
+                aria-pressed={folded.size === withChildren.length}
                 onClick={() => setFolded(new Set(withChildren))}
-                disabled={folded.size === withChildren.length}
               >
                 Roots only
-              </Button>{" "}
-              ·{" "}
-            </>
+              </button>
+            </fieldset>
           ) : null}
-          {`${n} ${n === 1 ? "event" : "events"}`}
+          <span className="tx-head-count">{`${n} ${n === 1 ? "event" : "events"}`}</span>
         </>
       }
     >
@@ -333,15 +395,21 @@ function Events({ v }: { v: Tx }) {
               exceeds the section and the table breaks out of it sideways. */}
             <Table className="tx-events">
               <colgroup>
-                <col style={{ width: 44 }} />
-                {/* The tree column: the caret, the indent and the kind badge. Wide enough for all three at
-                  the first levels; deeper than that the badge clips, and the row's details still name the
-                  kind in full. */}
-                <col style={{ width: 300 }} />
-                <col style={{ width: "24%" }} />
-                <col style={{ width: "16%" }} />
+                <col style={{ width: ORDINAL_WIDTH }} />
+                {/* The tree column: the caret, the indent, the kind badge and the count a fold hides. Wide
+                  enough for all four at the first levels; deeper than that the badge clips, and the row's
+                  details still name the kind in full. */}
+                <col style={{ width: 290 }} />
+                {/* Template takes what the others leave, because it is the one cell whose length varies. */}
                 <col />
-                <col style={{ width: 44 }} />
+                <col style={{ width: 128 }} />
+                <col style={{ width: 150 }} />
+                {/* Where the reader stands. A column of its own, because "and me?" is asked down the table
+                    rather than of one row at a time. */}
+                <col style={{ width: 150 }} />
+                {/* The chevron's column. Wide enough that the control sits in a column of its own rather than
+                    against the table's edge. */}
+                <col style={{ width: 56 }} />
               </colgroup>
               <tbody>
                 <tr>
@@ -350,20 +418,38 @@ function Events({ v }: { v: Tx }) {
                   <th>Template / choice</th>
                   <th>Contract</th>
                   <th>Witnesses</th>
+                  {/* Named for what the cell holds — a capacity — not for whose it is. "You" on its own read as
+                      a question. */}
+                  <th title="In what capacity your own party is on this event: signatory, observer, controller, or witness — divulged, when a create reached you without your standing on it.">
+                    Your role
+                  </th>
                   <th />
                 </tr>
-                {v.events.map((e, i) =>
-                  ancestorsOf(i).some((a) => folded.has(a)) ? null : (
+                {rows.map((row) =>
+                  row.kind === "group" ? (
+                    <ViewGroupRow
+                      key={`group-${row.at}`}
+                      group={groups[row.group] as UpdateViewGroup}
+                      n={row.group + 1}
+                      again={row.again}
+                      standing={standingIn(groups[row.group] as UpdateViewGroup)}
+                    />
+                  ) : (
                     <EventRow
                       // An event's identity is its index (#) within the update — the screen writes that number too.
-                      // biome-ignore lint/suspicious/noArrayIndexKey: the index is the name
-                      key={i}
-                      e={e}
-                      i={i}
-                      folded={folded.has(i)}
-                      lit={lit.includes(i)}
-                      dim={lens !== null && !(e.witnessParties ?? []).includes(lens)}
-                      onToggle={() => toggle(i)}
+                      key={`event-${row.at}`}
+                      e={v.events[row.at] as TxEvent}
+                      i={row.at}
+                      folded={folded.has(row.at)}
+                      rails={railsOf(v.events, row.at)}
+                      opens={
+                        (v.events[row.at]?.tree.descendantCount ?? 0) > 0 && !folded.has(row.at)
+                      }
+                      lit={lit.includes(row.at)}
+                      dim={
+                        lens !== null && !(v.events[row.at]?.witnessParties ?? []).includes(lens)
+                      }
+                      onToggle={() => toggle(row.at)}
                       onHover={setHovered}
                     />
                   ),
@@ -373,18 +459,126 @@ function Events({ v }: { v: Tx }) {
           </Scroll>
         </>
       )}
-      {nested ? (
+      {/* One line under the table, and the rest behind a fold. What the screen cannot claim still has to be
+          said somewhere a reader can find it; it does not have to be said to every reader every time. */}
+      {cut === "views" ? (
         <SectionBody>
           <Muted>
-            Indented by the transaction's node ids — an event stands under the exercise whose
-            subtree it fell in. Nodes you are not a witness of never arrive, so an event may stand
-            under an ancestor further up than its own parent; the row's details say which node it is
-            and which event it stands under. Folding an exercise hides its subtree and nothing else
-            — the row that hides it counts what went with it.
+            Cut where the set of parties changes — each band is who received that part. Not the
+            participant's own view decomposition.
+          </Muted>{" "}
+          <Disclosure summary="why not" className="clds-disclosure-inline">
+            <Muted>
+              A view is cut on each node's <i>own</i> informees; what arrives here is the{" "}
+              <i>cumulative</i> set — the node's and every ancestor's — and an exercise's own set
+              never arrives at all. Those sets only grow downwards, so this cut never invents a
+              boundary Canton would not draw; it misses the ones where a node's own informees narrow
+              without a new party coming in. And it is cut out of what you received, not out of the
+              transaction.
+            </Muted>
+          </Disclosure>
+        </SectionBody>
+      ) : nested ? (
+        <SectionBody>
+          <Muted>
+            Nodes you are not a witness of never arrive, so an event may stand under an ancestor
+            further up than its own parent.
           </Muted>
         </SectionBody>
       ) : null}
     </Section>
+  );
+}
+
+// The head of a group of events that went to the same parties. It is where a **view** boundary falls: Canton
+// cuts a transaction into regions whose informee set is the same and encrypts each region to those parties
+// alone. What is printed here is that cut as far as this response can show it — see groupUpdateViews (core).
+//
+// A group is a region of the tree, not a run of rows, so it can resume after another group has been printed;
+// the head says "again" rather than numbering the same region twice.
+function ViewGroupRow({
+  group,
+  n,
+  again,
+  standing,
+}: {
+  group: UpdateViewGroup;
+  n: number;
+  again: boolean;
+  // Every capacity the reader's parties hold somewhere in this group — "and me, in here?"
+  standing: string[];
+}) {
+  const count = group.eventIndexes.length;
+  // The band keeps the table's columns: what it is stands where the events stand, who received it under
+  // Witnesses, where the reader stands under You. As one cell across the table it ignored every column the
+  // rows below it were lined up on.
+  return (
+    <tr className="tx-view">
+      <td />
+      <td className="tx-cell">
+        <div
+          className="tx-view__title"
+          style={{ paddingInlineStart: Math.min(group.depth, INDENT_LEVELS) * INDENT_STEP }}
+        >
+          <b>view {n}</b>
+          {again ? <Muted>continued</Muted> : null}
+          <Muted>
+            {count} event{count === 1 ? "" : "s"}
+          </Muted>
+        </div>
+      </td>
+      <td className="tx-cell" colSpan={2} />
+      <td className="tx-cell" title={group.witnesses.join("\n")}>
+        {/* The same shape the rows use — first party and a count — so the band is two lines like them, not a
+            stack of chips. The column head already says these are the witnesses; the full list is the title. */}
+        {group.witnesses.length === 0 ? (
+          <Muted>none</Muted>
+        ) : (
+          <>
+            <PartyChip value={group.witnesses[0] ?? ""} />
+            {group.witnesses.length > 1 ? <Muted> +{group.witnesses.length - 1}</Muted> : null}
+          </>
+        )}
+      </td>
+      <td className="tx-cell">
+        {standing.length === 0 ? null : (
+          <span className="tx-standing">
+            {standing.map((role) => (
+              <Badge key={role} tone="accent" shape="rounded" className="tx-you">
+                {role}
+              </Badge>
+            ))}
+          </span>
+        )}
+      </td>
+      <td />
+    </tr>
+  );
+}
+
+// **Where the reader stands on this event.** The capacities are core's (explainVisibility), asked per party
+// and shown folded, because what a row has space for is "signatory", not "your party bob::… is a signatory".
+// The parties are in the title.
+//
+// `witness` on a created event is divulgence — a Create's informees are exactly its stakeholders — and the
+// row says that word instead. On an exercised event the same cannot be told (divulgedTo is null there), so
+// the capacity is left as it is.
+function YourStanding({ e }: { e: TxEvent }) {
+  const yours = e.yours ?? [];
+  if (yours.length === 0) return <Muted>—</Muted>;
+  const roles = [...new Set(yours.flatMap((r) => r.roles))];
+  const divulged = (e.divulgedTo ?? []).some((party) => yours.some((r) => r.party === party));
+  return (
+    <span
+      className="tx-standing"
+      title={yours.map((r) => `${r.party} — ${r.roles.join(", ")}`).join("\n")}
+    >
+      {roles.map((role) => (
+        <Badge key={role} tone="accent" shape="rounded" className="tx-you">
+          {role === "witness" && divulged ? "divulged" : role}
+        </Badge>
+      ))}
+    </span>
   );
 }
 
@@ -398,11 +592,38 @@ function Events({ v }: { v: Tx }) {
 // name the place exactly, so nothing is lost by stopping the stagger.
 const INDENT_LEVELS = 6;
 const INDENT_STEP = 26;
+// Where a rail is drawn inside its level: under the middle of that level's caret, so a child hangs from the
+// control that revealed it. The caret is 24px wide and first in its line, hence 12; the cell's own padding is
+// added in CSS (calc), so the token stays the one source of that number.
+const RAIL_CENTRE = 12;
+const railLeft = (level: number, fromTableEdge: boolean): string =>
+  `calc(var(--clds-space-8) + ${(fromTableEdge ? ORDINAL_WIDTH : 0) + level * INDENT_STEP + RAIL_CENTRE}px)`;
+// The ordinal column's width, which is also where the tree column's cells begin. The payload row spans the
+// whole table, so its rails are placed from the table's edge and have to skip that column to line up.
+const ORDINAL_WIDTH = 36;
+
+// One entry per level between this event and the root, outermost first: true where that ancestor still has
+// events below this row, which is the line that has to carry on past it. A subtree is contiguous in
+// pre-order, so the ancestor at index `a` carries on past row `i` exactly when `a + descendantCount > i`.
+function railsOf(events: readonly TxEvent[], i: number): boolean[] {
+  const rails: boolean[] = [];
+  const row = events[i];
+  if (row === undefined) return rails;
+  for (let at = row.tree.ancestorIndex; at !== null; ) {
+    const ancestor = events[at];
+    if (ancestor === undefined) break;
+    rails.unshift(at + ancestor.tree.descendantCount > i);
+    at = ancestor.tree.ancestorIndex;
+  }
+  return rails.slice(0, INDENT_LEVELS);
+}
 
 function EventRow({
   e,
   i,
   folded,
+  rails,
+  opens,
   lit,
   dim,
   onToggle,
@@ -412,6 +633,10 @@ function EventRow({
   i: number;
   // This event's own subtree is hidden.
   folded: boolean;
+  // One per level above this row: whether that ancestor still has events below it.
+  rails: boolean[];
+  // This row has events of its own showing under it, so its line carries on downwards.
+  opens: boolean;
   // The pointer is on this event or on something under it.
   lit: boolean;
   // The lens is set to a party this event does not name — it stays, quietly.
@@ -421,6 +646,10 @@ function EventRow({
 }) {
   const { depth, descendantCount } = e.tree;
   const [open, setOpen] = useState(false);
+  // **Folding a subtree hides this row's own details too.** Open, they sit exactly where the subtree would,
+  // and a reader folding the events away is left looking at a block that did not go anywhere, unable to tell
+  // which of the two it is. The state is kept, so unfolding brings the details back as they were.
+  const showDetails = open && !folded;
   const witnesses = e.witnessParties ?? [];
   const rowClass = (base: string) =>
     `${base}${lit ? ` ${base}--lit` : ""}${dim ? ` ${base}--dim` : ""}`;
@@ -430,48 +659,97 @@ function EventRow({
   const openOnRowClick = (event: MouseEvent<HTMLTableRowElement>) => {
     if ((event.target as HTMLElement).closest("a, button, input, [role='button']")) return;
     if ((globalThis.getSelection?.()?.toString() ?? "") !== "") return;
-    setOpen(!open);
+    setOpen(!showDetails);
   };
   return (
     <>
       <tr
-        className={`${rowClass("tx-event")} tx-event--clickable${open ? " tx-event--open" : ""}`}
+        className={`${rowClass("tx-event")} tx-event--clickable${
+          showDetails ? " tx-event--open" : ""
+        }`}
         onClick={openOnRowClick}
         {...hover}
       >
         <td>
           <Mono className="clds-muted">{i}</Mono>
         </td>
-        <td className="tx-cell">
+        <td className="tx-cell tx-cell--tree">
+          {/* The rails, drawn against the cell rather than inside the line, so they run its whole height and
+              meet the ones on the row above and the row below. A row is joined to the one it hangs from by a
+              line, not by the eye measuring an indent. */}
+          {rails.flatMap((carriesOn, level) => {
+            const left = railLeft(level, false);
+            const last = level === rails.length - 1;
+            // The connector into this row, and — where the parent has more children after it — the line that
+            // carries on past it, drawn as its own full-height rail so it reaches the row's edge whatever the
+            // row's height. (A pseudo-element hung off the elbow could only ever be as tall as the elbow.)
+            const marks = [];
+            if (last)
+              marks.push(
+                <span
+                  // biome-ignore lint/suspicious/noArrayIndexKey: the level is the name
+                  key={`${level}-elbow`}
+                  aria-hidden="true"
+                  className="tx-rail tx-rail--elbow"
+                  style={{ left }}
+                />,
+              );
+            if (carriesOn)
+              marks.push(
+                <span
+                  // biome-ignore lint/suspicious/noArrayIndexKey: the level is the name
+                  key={`${level}-line`}
+                  aria-hidden="true"
+                  className="tx-rail tx-rail--line"
+                  style={{ left }}
+                />,
+              );
+            return marks;
+          })}
+          {opens ? (
+            <span
+              aria-hidden="true"
+              className="tx-rail tx-rail--down"
+              style={{ left: railLeft(Math.min(depth, INDENT_LEVELS), false) }}
+            />
+          ) : null}
           <div
             className="tx-lead"
             style={{ paddingInlineStart: Math.min(depth, INDENT_LEVELS) * INDENT_STEP }}
           >
-            {descendantCount > 0 ? (
-              <button
-                type="button"
-                className="tx-caret"
-                aria-expanded={!folded}
-                aria-label={`${folded ? "Show" : "Hide"} the ${descendantCount} event${
-                  descendantCount === 1 ? "" : "s"
-                } under event ${i}`}
-                onClick={onToggle}
-              >
-                <span aria-hidden="true">{folded ? "▶" : "▼"}</span>
-              </button>
-            ) : (
-              /* The width a caret would take, so every badge in the column starts on one line. */
-              <span className="tx-caret tx-caret--none" aria-hidden="true" />
-            )}
-            {e.kind === "created" ? (
-              <Badge tone="positive" shape="rounded" mono>
-                created
-              </Badge>
-            ) : (
-              <Badge tone="negative" shape="rounded" mono>
-                exercised{e.consuming ? " · consuming" : ""}
-              </Badge>
-            )}
+            {/* The caret and the kind are one piece and never break apart — a caret on its own line above the
+                badge reads as a row of its own. Only the count of what is folded away may drop below them. */}
+            <span className="tx-lead__kind">
+              {descendantCount > 0 ? (
+                <button
+                  type="button"
+                  className="tx-caret"
+                  aria-expanded={!folded}
+                  aria-label={`${folded ? "Show" : "Hide"} the ${descendantCount} event${
+                    descendantCount === 1 ? "" : "s"
+                  } under event ${i}`}
+                  onClick={() => {
+                    // The details sit where the events under this one would, so they close out of the way.
+                    setOpen(false);
+                    onToggle();
+                  }}
+                >
+                  <span aria-hidden="true">{folded ? "▶" : "▼"}</span>
+                </button>
+              ) : (
+                /* The width a caret would take, so every badge in the column starts on one line. */
+                <span className="tx-caret tx-caret--none" aria-hidden="true" />
+              )}
+              {e.kind === "created" ? (
+                <Badge tone="positive" shape="rounded" mono>
+                  created
+                </Badge>
+              ) : (
+                <Badge tone="negative" shape="rounded" mono>
+                  exercised{e.consuming ? " · consuming" : ""}
+                </Badge>
+              )}
+            </span>
             {folded ? (
               // Short, because it shares a fixed column with the indent and the badge — the whole of it is
               // in the title, and the row's details say it in words.
@@ -512,21 +790,53 @@ function EventRow({
             </>
           )}
         </td>
+        <td className="tx-cell">
+          <YourStanding e={e} />
+        </td>
         <td className="tx-cell tx-cell--end">
           <button
             type="button"
             className="tx-caret tx-caret--more"
-            aria-expanded={open}
-            aria-label={`${open ? "Hide" : "Show"} the details of event ${i}`}
-            onClick={() => setOpen(!open)}
+            aria-expanded={showDetails}
+            aria-label={`${showDetails ? "Hide" : "Show"} the details of event ${i}`}
+            onClick={() => setOpen(!showDetails)}
           >
-            <span aria-hidden="true">{open ? "▾" : "▸"}</span>
+            <span aria-hidden="true">{showDetails ? "▾" : "▸"}</span>
           </button>
         </td>
       </tr>
-      {open ? (
+      {showDetails ? (
         <tr className={rowClass("tx-args")} {...hover}>
-          <td colSpan={6}>
+          <td
+            className="tx-cell--tree"
+            colSpan={7}
+            // The payload stands one level in from its row, past every rail that crosses it — the same place
+            // the row's children start — so the lines run beside it rather than through its first letters.
+            style={{
+              paddingInlineStart: `calc(var(--clds-space-8) + ${
+                ORDINAL_WIDTH + (Math.min(depth, INDENT_LEVELS) + 1) * INDENT_STEP
+              }px)`,
+            }}
+          >
+            {/* The payload row stands between an event and the events under it, so the lines cross it. The
+                connector's level carries on only where the parent has more children after this one, and the
+                row's own level carries on when it has children of its own showing. */}
+            {[
+              ...rails.slice(0, -1),
+              ...(rails.length > 0 ? [rails[rails.length - 1] === true] : []),
+            ]
+              .concat(opens ? [true] : [])
+              .map((carriesOn, level) =>
+                carriesOn ? (
+                  <span
+                    // biome-ignore lint/suspicious/noArrayIndexKey: the level is the name
+                    key={level}
+                    aria-hidden="true"
+                    className="tx-rail tx-rail--line"
+                    style={{ left: railLeft(level, true) }}
+                  />
+                ) : null,
+              )}
             <EventDetail e={e} />
           </td>
         </tr>

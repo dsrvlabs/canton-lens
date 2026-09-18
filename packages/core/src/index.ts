@@ -264,6 +264,11 @@ export type {
 } from "./update-detail/build-update-detail.ts";
 export { buildUpdateDetail } from "./update-detail/build-update-detail.ts";
 export type {
+  GroupableEvent,
+  UpdateViewGroup,
+} from "./update-detail/group-update-views.ts";
+export { groupUpdateViews } from "./update-detail/group-update-views.ts";
+export type {
   NestableEvent,
   UpdateEventPlacement,
 } from "./update-detail/nest-update-events.ts";
