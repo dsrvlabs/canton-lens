@@ -43,7 +43,7 @@ for (const name of await readdir(join(FIXTURES, "packages"))) {
   if (name.endsWith(".bin")) bytes.set(name, await readFile(join(FIXTURES, "packages", name)));
 }
 
-test("stands up the recorded ledger and passes every level (three people)", async () => {
+test("stands up the recorded ledger and passes every level (twelve people)", async () => {
   // The schema cache is module-level, so what another test in the same process filled stays. If it does, the
   // package requests never go out and the blueprint-reading path is not checked.
   _clearSchemaCache();
@@ -98,12 +98,23 @@ test("stands up the recorded ledger and passes every level (three people)", asyn
       `live participant. Say in your pull request that the tape needs re-recording.\n  ${misses.slice(0, 5).join("\n  ")}`,
   );
   assert.ok(report.ok, `\n${formatReport(report)}`);
+  // **Twelve, not three.** The three who came first all hold ordinary read rights on parties of their own,
+  // and that is the one shape whose answers reveal the least. The other nine are the shapes the product's
+  // viewer classification can tell apart: no rights at all, an administrative right that is not a reading
+  // right, act-as alone, both capacities on one party, two rights on two parties, a reader of every party
+  // with and without a party of their own, and a person the seed left nothing.
   assert.equal(
     report.users.length,
-    3,
-    "runs as three people — with one, the fact that people see different things is invisible",
+    12,
+    "runs as twelve people — the boundary is only visible where the people differ",
   );
-  assert.ok(report.asked >= 17, `17 addresses must be asked (asked ${report.asked} times)`);
+  // 18 addresses × 12 people, less the 23 that legitimately cannot be put to someone.
+  assert.equal(report.asked, 193, `asked ${report.asked} times`);
+  assert.equal(
+    report.notAsked.length,
+    23,
+    `${report.notAsked.length} addresses were rightly not asked — the count is derived in expectations.test.ts`,
+  );
 });
 
 test("when our code asks something else it fails loudly instead of passing quietly", async () => {

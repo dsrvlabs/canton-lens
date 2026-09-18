@@ -1,25 +1,26 @@
 {
-  "recordedAt": "2026-09-14T11:28:07.289Z",
+  "recordedAt": "2026-09-18T08:07:19.441Z",
   "cantonVersion": "3.5.15",
   "ledger": "http://localhost:7575",
+  "ledgerEnd": 161,
   "people": [
     {
       "name": "alice",
       "parties": [
         {
-          "party": "alice::1220e2b3c32f91feb4a21be4ea30a8302f1e9825e8ee2c9b3dd1bac4b84730372db9",
+          "party": "alice::1220a408874e87ce1a06b495acde579f2d07864fb88daed6edae170731b618810c3e",
           "kinds": [
             "CanReadAs"
           ]
         },
         {
-          "party": "acme-treasury::1220e2b3c32f91feb4a21be4ea30a8302f1e9825e8ee2c9b3dd1bac4b84730372db9",
+          "party": "acme-treasury::1220a408874e87ce1a06b495acde579f2d07864fb88daed6edae170731b618810c3e",
           "kinds": [
             "CanReadAs"
           ]
         },
         {
-          "party": "acme-ops::1220e2b3c32f91feb4a21be4ea30a8302f1e9825e8ee2c9b3dd1bac4b84730372db9",
+          "party": "acme-ops::1220a408874e87ce1a06b495acde579f2d07864fb88daed6edae170731b618810c3e",
           "kinds": [
             "CanReadAs"
           ]
@@ -33,7 +34,7 @@
       "name": "bob",
       "parties": [
         {
-          "party": "bob::1220e2b3c32f91feb4a21be4ea30a8302f1e9825e8ee2c9b3dd1bac4b84730372db9",
+          "party": "bob::1220a408874e87ce1a06b495acde579f2d07864fb88daed6edae170731b618810c3e",
           "kinds": [
             "CanReadAs"
           ]
@@ -47,7 +48,7 @@
       "name": "carol",
       "parties": [
         {
-          "party": "carol::1220e2b3c32f91feb4a21be4ea30a8302f1e9825e8ee2c9b3dd1bac4b84730372db9",
+          "party": "carol::1220a408874e87ce1a06b495acde579f2d07864fb88daed6edae170731b618810c3e",
           "kinds": [
             "CanReadAs"
           ]
@@ -56,6 +57,111 @@
       "readsEveryParty": false,
       "seesContracts": true,
       "seesUpdates": true
+    },
+    {
+      "name": "nobody",
+      "parties": [],
+      "readsEveryParty": false,
+      "seesContracts": false,
+      "seesUpdates": false
+    },
+    {
+      "name": "idp",
+      "parties": [],
+      "readsEveryParty": false,
+      "seesContracts": false,
+      "seesUpdates": false
+    },
+    {
+      "name": "padmin",
+      "parties": [],
+      "readsEveryParty": false,
+      "seesContracts": false,
+      "seesUpdates": false
+    },
+    {
+      "name": "actor",
+      "parties": [
+        {
+          "party": "bob::1220a408874e87ce1a06b495acde579f2d07864fb88daed6edae170731b618810c3e",
+          "kinds": [
+            "CanActAs"
+          ]
+        }
+      ],
+      "readsEveryParty": false,
+      "seesContracts": true,
+      "seesUpdates": true
+    },
+    {
+      "name": "super",
+      "parties": [],
+      "readsEveryParty": true,
+      "seesContracts": true,
+      "seesUpdates": true
+    },
+    {
+      "name": "superplus",
+      "parties": [
+        {
+          "party": "bob::1220a408874e87ce1a06b495acde579f2d07864fb88daed6edae170731b618810c3e",
+          "kinds": [
+            "CanReadAs"
+          ]
+        }
+      ],
+      "readsEveryParty": true,
+      "seesContracts": true,
+      "seesUpdates": true
+    },
+    {
+      "name": "dual",
+      "parties": [
+        {
+          "party": "bob::1220a408874e87ce1a06b495acde579f2d07864fb88daed6edae170731b618810c3e",
+          "kinds": [
+            "CanReadAs",
+            "CanActAs"
+          ]
+        }
+      ],
+      "readsEveryParty": false,
+      "seesContracts": true,
+      "seesUpdates": true
+    },
+    {
+      "name": "mixed",
+      "parties": [
+        {
+          "party": "bob::1220a408874e87ce1a06b495acde579f2d07864fb88daed6edae170731b618810c3e",
+          "kinds": [
+            "CanReadAs"
+          ]
+        },
+        {
+          "party": "carol::1220a408874e87ce1a06b495acde579f2d07864fb88daed6edae170731b618810c3e",
+          "kinds": [
+            "CanActAs"
+          ]
+        }
+      ],
+      "readsEveryParty": false,
+      "seesContracts": true,
+      "seesUpdates": true
+    },
+    {
+      "name": "dave",
+      "parties": [
+        {
+          "party": "dave::1220a408874e87ce1a06b495acde579f2d07864fb88daed6edae170731b618810c3e",
+          "kinds": [
+            "CanReadAs"
+          ]
+        }
+      ],
+      "readsEveryParty": false,
+      "seesContracts": false,
+      "seesUpdates": false
     }
   ]
 }
