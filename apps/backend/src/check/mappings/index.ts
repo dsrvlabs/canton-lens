@@ -7,7 +7,9 @@
 import type { CheckContext, Mapping } from "../mapping.ts";
 import { contractsMapping } from "./contracts.ts";
 import { nodeMapping } from "./node.ts";
+import { packagesCatalogMapping } from "./packages-catalog.ts";
 import { partyMapping } from "./party.ts";
+import { preapprovalsMapping } from "./preapprovals.ts";
 import { sessionMapping } from "./session.ts";
 import { timelineMapping } from "./timeline.ts";
 import { updatesMapping } from "./updates.ts";
@@ -18,8 +20,10 @@ export const MAPPINGS: Record<string, Mapping<CheckContext>> = {
   // list and the cursor that the default page size never reaches.
   "/api/contracts": contractsMapping,
   "/api/contracts?pageSize=2": contractsMapping,
+  "/api/catalog/packages": packagesCatalogMapping,
   "/api/node": nodeMapping,
   "/api/party/{partyId}": partyMapping,
+  "/api/preapprovals": preapprovalsMapping,
   "/api/session": sessionMapping,
   "/api/updates": updatesMapping,
   "/api/timeline": timelineMapping,

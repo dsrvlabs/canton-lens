@@ -37,7 +37,9 @@ export type Origin =
   /** The node's own value, carried through untouched. */
   | "node"
   /** A value this application made up: a count, a join, a split, a rename. */
-  | "app";
+  | "app"
+  /** A slot this check declines to state, with the reason written into the sentence. See `unjudged`. */
+  | "unjudged";
 
 // The part a reviewer reads. `says` is the sentence; for `node` it is the path in the node object, so the
 // sentence and the machine cannot drift apart.
@@ -67,6 +69,25 @@ const isBranches = (table: Table): table is Branches =>
 
 /** Returned by a rule for a key that should not be in the response at all. */
 export const ABSENT = Symbol("absent");
+
+/**
+ * **A slot this check cannot state, standing in the expected answer where the value would be.**
+ *
+ * The whole method is that a person writes down the rule again, independently. For a handful of slots the
+ * independent restatement *is* the product: the table of contents of a Daml package is whatever the package
+ * bytes decode to, and writing that rule again means writing a second LF decoder. Pretending otherwise would
+ * mean copying the product's answer into the expected one and calling the agreement a check.
+ *
+ * So the abstention is written down instead, with its reason, and `differences` passes over it. It is not
+ * silence: a test lists every one of them by name, so adding one is an edit somebody reviews.
+ */
+export const UNJUDGED = Symbol("unjudged");
+
+export const unjudged = <Item>(why: string): Rule<Item> => ({
+  says: `not judged — ${why}`,
+  origin: "unjudged",
+  from: () => UNJUDGED,
+});
 
 // The node's value, named by where it sits in the node object. Dotted path; a missing step gives undefined,
 // which is compared like any other value (and so shows up as a difference rather than a crash).
@@ -170,13 +191,26 @@ export function reachableSchemas(root: string): string[] {
 export type CoverageProblem = { schema: string; slot?: string; message: string };
 
 /** The values of the discriminant that reach one branch, or null when the branch has no constant there. */
+// A discriminant is usually a string, but not always: one union is told apart by `passed: true` against
+// `passed: false`. A branch's values are written as the text of the constant, so `when: ["true"]` names the
+// boolean one and reads the same way as every other branch.
 const discriminates = (branch: unknown, by: string): string[] | null => {
   const properties = (branch as { properties?: Record<string, unknown> }).properties;
   const slot = properties?.[by] as { const?: unknown; enum?: unknown } | undefined;
   if (slot === undefined) return null;
-  if (typeof slot.const === "string") return [slot.const];
-  if (Array.isArray(slot.enum) && slot.enum.every((v) => typeof v === "string")) {
-    return slot.enum as string[];
+  const plain = (value: unknown): string | null =>
+    typeof value === "string"
+      ? value
+      : typeof value === "boolean" || typeof value === "number"
+        ? String(value)
+        : null;
+  if (slot.const !== undefined) {
+    const one = plain(slot.const);
+    return one === null ? null : [one];
+  }
+  if (Array.isArray(slot.enum)) {
+    const all = slot.enum.map(plain);
+    return all.every((v): v is string => v !== null) ? all : null;
   }
   return null;
 };
@@ -316,6 +350,8 @@ export function differences(expected: unknown, actual: unknown): string[] {
   const found: string[] = [];
   const walk = (want: unknown, got: unknown, path: string) => {
     if (found.length >= DIFFERENCES_SHOWN) return;
+    // A slot whose rule is a declared abstention. Whatever the answer holds there, this check says nothing.
+    if (want === UNJUDGED) return;
     if (Array.isArray(want) || Array.isArray(got)) {
       if (!Array.isArray(want) || !Array.isArray(got)) {
         found.push(`${path} — expected ${show(want)}, got ${show(got)}`);

@@ -21,7 +21,7 @@ import { _clearSchemaCache } from "../router.ts";
 import { matchRoute, ROUTES } from "../routes.ts";
 import { type Given, partiesFromRights } from "./given.ts";
 import { fakeTokenFor, parseTape, replaySend, tapeKey } from "./ledger-tape.ts";
-import { coverage, differences } from "./mapping.ts";
+import { type AnyRule, coverage, differences } from "./mapping.ts";
 import { MAPPINGS } from "./mappings/index.ts";
 import { type Ask, describeCoverage, formatReport, nowFrom, runCheck } from "./run-check.ts";
 import { tracingSend } from "./trace.ts";
@@ -317,6 +317,37 @@ test("every mapping describes every slot the contract lets its answer reach", ()
     );
     assert.deepEqual(problems, [], `${address}\n  ${problems.join("\n  ")}`);
   }
+});
+
+test("the slots no mapping judges are these, and nobody adds one quietly", () => {
+  // **The escape hatch, listed by name.** A rule may decline a slot when the independent restatement would
+  // *be* the product — a package's table of contents is whatever its bytes decode to, and writing that rule
+  // again means writing a second Daml-LF decoder. The abstention is honest; leaving it invisible would not
+  // be. So every one of them is written out here, and adding one is an edit somebody reviews.
+  const declined: string[] = [];
+  const visit = (address: string, schema: string, table: Record<string, AnyRule>) => {
+    for (const [slot, rule] of Object.entries(table)) {
+      if (rule.origin === "unjudged") declined.push(`${address} ${schema}.${slot}`);
+    }
+  };
+  for (const [address, mapping] of Object.entries(MAPPINGS)) {
+    for (const [schema, table] of Object.entries(mapping.slots)) {
+      const branches = table as { by?: unknown; of?: { slots: Record<string, AnyRule> }[] };
+      if (typeof branches.by === "string" && Array.isArray(branches.of)) {
+        for (const entry of branches.of) visit(address, schema, entry.slots);
+      } else {
+        visit(address, schema, table as Record<string, AnyRule>);
+      }
+    }
+  }
+  assert.deepEqual(declined.sort(), [
+    "/api/catalog/packages PackageRow.interfaces",
+    "/api/catalog/packages PackageRow.lfVersion",
+    "/api/catalog/packages PackageRow.name",
+    "/api/catalog/packages PackageRow.schemaStatus",
+    "/api/catalog/packages PackageRow.templates",
+    "/api/catalog/packages PackageRow.version",
+  ]);
 });
 
 test("a union of branches is described branch by branch, or it is reported", () => {
