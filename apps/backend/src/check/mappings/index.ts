@@ -5,6 +5,7 @@
 // address is fine".
 // Applying a comparator to an address with no rules would compare against nothing and call it green.
 import type { CheckContext, Mapping } from "../mapping.ts";
+import { nameTables } from "../mapping.ts";
 import { contractDetailMapping } from "./contract-detail.ts";
 import { contractsMapping } from "./contracts.ts";
 import { holdingsMapping } from "./holdings.ts";
@@ -54,3 +55,8 @@ export const MAPPINGS: Record<string, Mapping<CheckContext>> = {
   "/api/updates/by-offset/{offset}": updateDetailMapping,
   "/api/timeline": timelineMapping,
 };
+
+// **Every table learns the name of the schema it describes**, so a rule that runs can be written down under
+// it. Done here rather than in each mapping because this is the one place that knows them all, and a mapping
+// that forgot would go uncounted in silence — which reads as "that slot is never judged" (check/coverage.ts).
+for (const mapping of new Set(Object.values(MAPPINGS))) nameTables(mapping);

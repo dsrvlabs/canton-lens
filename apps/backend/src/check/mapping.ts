@@ -114,12 +114,44 @@ export const app = <Item>(says: string, from: (item: Item) => unknown): Rule<Ite
   from,
 });
 
+// ── Which slots anything ever ran over ───────────────────────────────────────────
+// **"Every slot has a rule" and "every slot was judged" are different statements**, and only the first was
+// being made. A rule sitting under a union branch the recording never produced is a sentence nobody has
+// read against anything: it can say whatever it likes. So each table is given the name of the schema it
+// describes, and a rule that runs is written down under that name.
+//
+// What is counted is a rule **running**, not a comparison succeeding. A rule that ran made a value, and that
+// value went into the expected answer and was compared slot for slot — so running is what "judged" means
+// here, and the comparison's own correctness is a different file's business (differences, below).
+const nameOfTable = new WeakMap<object, string>();
+const ranOver = new Map<string, number>();
+
+/** Gives every table of a mapping the name of the schema it describes. Idempotent. */
+export function nameTables(mapping: { slots: Record<string, Table> }): void {
+  for (const [schema, table] of Object.entries(mapping.slots)) {
+    if (isBranches(table)) {
+      for (const branch of table.of) nameOfTable.set(branch.slots, schema);
+    } else {
+      nameOfTable.set(table, schema);
+    }
+  }
+}
+
+/** How many times each `schema.slot` rule has run since the counters were last cleared. */
+export const slotsRunOver = (): ReadonlyMap<string, number> => new Map(ranOver);
+export const forgetSlotsRunOver = (): void => ranOver.clear();
+
 // Builds one object from its slot table. A rule answering ABSENT leaves the key out entirely — which is a
 // different response from a key holding null, and the comparison below keeps them different.
 export function buildObject<Item>(rules: Record<string, Rule<Item>>, item: Item): unknown {
   const out: Record<string, unknown> = {};
+  const schema = nameOfTable.get(rules);
   for (const [slot, rule] of Object.entries(rules)) {
     const value = rule.from(item);
+    if (schema !== undefined) {
+      const at = `${schema}.${slot}`;
+      ranOver.set(at, (ranOver.get(at) ?? 0) + 1);
+    }
     if (value !== ABSENT) out[slot] = value;
   }
   return out;
