@@ -304,50 +304,51 @@ function Events({ v }: { v: Tx }) {
       title="Events"
       note={
         <>
+          {/* Two choices, each of two: how the rows are cut, and how much of the tree is open. Each pair is
+              one control, so the head reads as two questions rather than four words. The one in use is not
+              disabled — a disabled control is drawn as the one you cannot have, and here it is the one you are
+              looking at; aria-pressed says which. */}
           {n > 1 ? (
-            <>
-              {/* Not disabled when it is the one in use: a disabled control is drawn as the one you cannot
-                  have, and here it is the one you are looking at. aria-pressed says which, and so does the
-                  weight. */}
-              <Button
-                variant="plain"
-                className="tx-cut"
+            <fieldset className="tx-seg" aria-label="Cut">
+              <button
+                type="button"
+                className="tx-seg__opt"
                 aria-pressed={cut === "tree"}
                 onClick={() => setCut("tree")}
               >
                 Tree
-              </Button>{" "}
-              <Button
-                variant="plain"
-                className="tx-cut"
+              </button>
+              <button
+                type="button"
+                className="tx-seg__opt"
                 aria-pressed={cut === "views"}
                 onClick={() => setCut("views")}
               >
                 Views
-              </Button>{" "}
-              ·{" "}
-            </>
+              </button>
+            </fieldset>
           ) : null}
           {withChildren.length > 0 ? (
-            <>
-              <Button
-                variant="plain"
+            <fieldset className="tx-seg" aria-label="Folding">
+              <button
+                type="button"
+                className="tx-seg__opt"
+                aria-pressed={folded.size === 0}
                 onClick={() => setFolded(new Set<number>())}
-                disabled={folded.size === 0}
               >
                 Expand all
-              </Button>{" "}
-              <Button
-                variant="plain"
+              </button>
+              <button
+                type="button"
+                className="tx-seg__opt"
+                aria-pressed={folded.size === withChildren.length}
                 onClick={() => setFolded(new Set(withChildren))}
-                disabled={folded.size === withChildren.length}
               >
                 Roots only
-              </Button>{" "}
-              ·{" "}
-            </>
+              </button>
+            </fieldset>
           ) : null}
-          {`${n} ${n === 1 ? "event" : "events"}`}
+          <span className="tx-head-count">{`${n} ${n === 1 ? "event" : "events"}`}</span>
         </>
       }
     >

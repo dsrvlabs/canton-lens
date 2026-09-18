@@ -649,10 +649,49 @@
   flex-wrap: wrap;
   gap: var(--clds-space-2);
 }
+/* "You" is a different kind of fact from a party's name, so it takes a different ground: the accent laid
+   down thin, rather than the solid soft the party chips wear. Same hue, so it is still yours; see-through, so
+   it is not one more chip. */
+.clds-badge.tx-you {
+  background: color-mix(in srgb, var(--clds-color-accent) 12%, transparent);
+  color: var(--clds-color-accent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--clds-color-accent) 28%, transparent);
+}
 
-/* Which cut the table is read by. The one in use is the heavier of the two — it is a statement about what
-   you are looking at, not a control that has been taken away. */
-.tx-cut[aria-pressed="true"] {
+/* ── The head's two controls ──────────────────────────────────────────────────
+   Each is a pair of choices drawn as one piece — a hairline around both, the one in use on the field ground.
+   Four words in a row read as four unrelated actions; two pairs read as two questions. */
+.tx-seg {
+  display: inline-flex;
+  /* A fieldset for the semantics, drawn as a control: none of the box a fieldset comes with. */
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+  border: 1px solid var(--clds-color-rule);
+  border-radius: var(--clds-radius-lg);
+  overflow: hidden;
+  vertical-align: middle;
+  margin-inline-start: var(--clds-space-4);
+}
+.tx-seg__opt {
+  font: inherit;
+  font-size: var(--clds-text-small);
+  font-weight: var(--clds-weight-medium);
+  color: var(--clds-color-accent);
+  background: transparent;
+  border: 0;
+  padding: 3px 10px;
+  cursor: pointer;
+}
+.tx-seg__opt + .tx-seg__opt {
+  border-left: 1px solid var(--clds-color-rule);
+}
+.tx-seg__opt:hover {
+  background: var(--clds-color-subtle);
+}
+/* The one in use: on the field ground, in the ink, and heavier. */
+.tx-seg__opt[aria-pressed="true"] {
+  background: var(--clds-color-field);
   color: var(--clds-color-ink);
   font-weight: var(--clds-weight-bold);
 }
