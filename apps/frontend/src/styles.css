@@ -529,6 +529,15 @@
   gap: var(--clds-space-2);
   min-width: 0;
 }
+/* Hangs from the row above — drawn, not spelled out, and in the faint ink so it is a mark rather than a
+   character in the sentence. */
+.tx-lead__elbow {
+  flex: none;
+  color: var(--clds-color-ink-faint);
+  font-family: var(--clds-font-mono);
+  line-height: 1;
+}
+
 /* Out of room, the kind breaks inside itself ("exercised ·" / "consuming") rather than pushing the caret off
    its line. */
 .tx-lead__kind .clds-badge .clds-inline {

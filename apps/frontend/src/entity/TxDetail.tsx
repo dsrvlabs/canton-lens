@@ -624,6 +624,13 @@ function EventRow({
             {/* The caret and the kind are one piece and never break apart — a caret on its own line above the
                 badge reads as a row of its own. Only the count of what is folded away may drop below them. */}
             <span className="tx-lead__kind">
+              {/* The mark that says this row hangs under another. The indent alone is a few pixels between
+                  neighbours; the elbow is the thing the eye finds. */}
+              {depth > 0 ? (
+                <span className="tx-lead__elbow" aria-hidden="true">
+                  └
+                </span>
+              ) : null}
               {descendantCount > 0 ? (
                 <button
                   type="button"
