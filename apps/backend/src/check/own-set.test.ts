@@ -29,9 +29,11 @@ test("a question that named a template or an interface is not a question for eve
   // A request naming nobody asks for nothing — it is not "everything".
   assert.equal(contractsAskedEverything(contractsBody({})), false);
   // The super reader's shape names no party and is still a question for everything.
+  assert.equal(contractsAskedEverything({ filter: { filtersForAnyParty: WILDCARD } }), true);
+  // The bare list is the shape the node refuses with a 400, so it is not a question that was ever asked.
   assert.equal(
     contractsAskedEverything({ filter: { filtersForAnyParty: WILDCARD.cumulative } }),
-    true,
+    false,
   );
   assert.equal(updatesAskedEverything(updatesBody({ alice: WILDCARD })), true);
   assert.equal(updatesAskedEverything(updatesBody({ alice: INTERFACE })), false);
@@ -103,10 +105,10 @@ test("an answer key that cannot be one is refused before anything is compared ag
           entry({
             askedAsAnyParty: true,
             asked: {
-              contracts: { filter: { filtersForAnyParty: WILDCARD.cumulative } },
+              contracts: { filter: { filtersForAnyParty: WILDCARD } },
               updates: {
                 updateFormat: {
-                  includeTransactions: { eventFormat: { filtersForAnyParty: WILDCARD.cumulative } },
+                  includeTransactions: { eventFormat: { filtersForAnyParty: WILDCARD } },
                 },
               },
             },

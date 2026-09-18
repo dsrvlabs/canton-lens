@@ -53,10 +53,18 @@ const rec = (value: unknown): Record<string, unknown> =>
   value !== null && typeof value === "object" ? (value as Record<string, unknown>) : {};
 const arr = (value: unknown): unknown[] => (Array.isArray(value) ? value : []);
 
-/** Every cumulative filter in an event format is a wildcard, and there is at least one. */
+/**
+ * Every cumulative filter in an event format is a wildcard, and there is at least one.
+ *
+ * **`filtersForAnyParty` is an object with its own `cumulative`, not a bare list** — the node answers 400
+ * "Missing required field at 'cumulative'" to the bare list (measured against the dev participant on
+ * 2026-09-18), and the product sends the object form (core/ledger-request/party-filter.ts:33). Reading it as
+ * a list made a super reader's request look like no filter at all, which is the one viewer this judgment
+ * exists for.
+ */
 function eventFormatIsWildcard(format: unknown): boolean {
   const byParty = Object.values(rec(rec(format).filtersByParty));
-  const anyParty = arr(rec(format).filtersForAnyParty);
+  const anyParty = arr(rec(rec(format).filtersForAnyParty).cumulative);
   const cumulative = [...byParty.flatMap((f) => arr(rec(f).cumulative)), ...anyParty];
   return (
     cumulative.length > 0 &&
