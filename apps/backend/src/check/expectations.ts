@@ -1,9 +1,11 @@
 // **What is asked, and what counts as passing.** This file is the check's standard.
 //
-// The judgment has three levels (spec: "the design of the check"):
+// The judgment has four levels (spec: "the design of the check"):
 //   ① it answers      — no 5xx. Asked with a token, so it should be 200.
 //   ② it matches      — it passes the openapi 200 schema (`additionalProperties:false` + `required`).
 //   ③ it has content  — a list such as `rows` being empty is a failure.
+//   ④ it is derived   — every value is what the rules in check/mappings/ say the node's answer produces.
+//                       Only the addresses that have rules are judged at this level; the rest stop at ③.
 //
 // Why ③ is needed: **an empty array means JSON Schema's `items` never runs at all.** So ② can be green while
 // most of the schema went unchecked. ③ is the precondition for ②.

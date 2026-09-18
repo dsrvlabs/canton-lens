@@ -2,8 +2,9 @@
 // the only difference is what sits behind `send`. Here the real answers recorded in fixtures/ stand in the
 // ledger's place.
 //
-// So a green light here means: **against the ledger as it was on the day it was recorded, all 16 endpoints
-// answer, match the openapi contract, and have content.** It says nothing about whether the node has changed
+// So a green light here means: **against the ledger as it was on the day it was recorded, all 17 addresses
+// answer, match the openapi contract, have content, and — where rules have been written for them — say only
+// what the node gave them.** It says nothing about whether the node has changed
 // since: only a run against a live participant says that (and when it has, this fails with "a question that
 // is not on the tape").
 import assert from "node:assert/strict";
@@ -18,7 +19,10 @@ import { fileURLToPath } from "node:url";
 import { buildApp } from "../live/build-app.mjs";
 import { _clearSchemaCache } from "../router.ts";
 import { fakeTokenFor, parseTape, replaySend, tapeKey } from "./ledger-tape.ts";
+import { coverage, differences } from "./mapping.ts";
+import { MAPPINGS } from "./mappings/index.ts";
 import { type Ask, describeCoverage, formatReport, nowFrom, runCheck } from "./run-check.ts";
+import { tracingSend } from "./trace.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const FIXTURES = join(HERE, "fixtures");
@@ -34,20 +38,29 @@ for (const name of await readdir(join(FIXTURES, "packages"))) {
   if (name.endsWith(".bin")) bytes.set(name, await readFile(join(FIXTURES, "packages", name)));
 }
 
-test("stands up the recorded ledger and passes all three levels (three people)", async () => {
+test("stands up the recorded ledger and passes every level (three people)", async () => {
   // The schema cache is module-level, so what another test in the same process filled stays. If it does, the
   // package requests never go out and the blueprint-reading path is not checked.
   _clearSchemaCache();
   // Collect the questions that were not found. Throwing alone is not enough: the router names a throwing
   // `send` `unreachable` (504), so reading only the report diagnoses "could not reach the node".
   const misses: string[] = [];
+  // **The clock is handed in too.** `readAt` is stamped on every 200 by the boot file, and the rules
+  // (check/mappings/) have to say what it should be — against the real clock there is no such thing.
+  const recordedAt = new Date(meta.recordedAt);
+  // One more wrapper on the way out, so the check can see what the node was asked for each address. Nothing
+  // else changes: the request still goes through routing, authentication and the handler.
+  const tracer = tracingSend(replaySend(entries, bytes, misses));
   const app = buildApp({
-    send: replaySend(entries, bytes, misses),
+    send: tracer.send,
     ledgerAuth: { mode: "caller-bearer" },
+    now: () => recordedAt,
   });
   const askAs =
     (who: string): Ask =>
     async (url) => {
+      // Cleared before, taken after — that is also what groups "the node calls this one address made".
+      tracer.take();
       const response = await app.inject({
         method: "GET",
         url,
@@ -59,14 +72,14 @@ test("stands up the recorded ledger and passes all three levels (three people)",
       } catch {
         body = null;
       }
-      return { status: response.statusCode, body };
+      return { status: response.statusCode, body, ledger: tracer.take() };
     };
 
   // **"Now" is the instant it was recorded.** Using the real clock would let the expiry times the seed planted
   // slip into the past, and one day the answers would change on their own — the ledger frozen, the clock running.
   const report = await runCheck(
     meta.users.map((name) => ({ name, ask: askAs(name) })),
-    nowFrom(new Date(meta.recordedAt)),
+    nowFrom(recordedAt),
   );
   await app.close();
 
@@ -212,4 +225,32 @@ test("the tape key follows the same rules as the wire — two different requests
     tapeKey("alice", "GET", `/v2/packages/${"a".repeat(64)}`, null),
     tapeKey("bob", "GET", `/v2/packages/${"a".repeat(64)}`, null),
   );
+});
+
+test("every mapping describes every slot the contract lets its answer reach", () => {
+  // **This is what stops a mapping from describing six slots of forty and passing.** The list of schemas is
+  // taken from openapi, not written here, so a slot added to the contract has nowhere to hide: it arrives as
+  // "no rule" the moment it exists.
+  for (const [address, mapping] of Object.entries(MAPPINGS)) {
+    const problems = coverage(mapping).map(
+      (p) => `${p.schema}${p.slot === undefined ? "" : `.${p.slot}`} — ${p.message}`,
+    );
+    assert.deepEqual(problems, [], `${address}\n  ${problems.join("\n  ")}`);
+  }
+});
+
+test("the comparison tells apart the things that look the same", () => {
+  // The comparator is the whole of level ④, so the ways it could be quietly blind are pinned down here.
+  // Each of these passed some earlier, looser comparison.
+  assert.deepEqual(differences({ a: 1 }, { a: 1 }), []);
+  // A key we did not expect is a difference. Reading only our own keys would miss a value the API invented.
+  assert.equal(differences({ a: 1 }, { a: 1, b: 2 }).length, 1, "an extra key");
+  // Absent and null are different answers — `additionalProperties`/`required` treat them differently and so
+  // does every screen that asks "is this known?".
+  assert.equal(differences({ a: null }, {}).length, 1, "null against absent");
+  assert.equal(differences({}, { a: null }).length, 1, "absent against null");
+  // A number and its string are different answers; so are a one-element list and the element.
+  assert.equal(differences({ a: 1 }, { a: "1" }).length, 1, "a number and a string");
+  assert.equal(differences({ a: [1] }, { a: 1 }).length, 1, "a list and a value");
+  assert.ok(differences([1, 2], [1]).length >= 1, "a shorter list");
 });

@@ -14,10 +14,18 @@ import type { ValidateFunction } from "ajv";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import { openApiDocument } from "../openapi.ts";
 import { type Harvest, harvest, ROUND_ONE, ROUND_TWO } from "./expectations.ts";
+import { checkPages, differences } from "./mapping.ts";
+import { MAPPINGS } from "./mappings/index.ts";
+import type { NodeCall } from "./trace.ts";
 
 // The channel for asking one address as one person. Whoever built `ask` already holds the token — this keeps
 // credentials out of this file, so there is no place for them to end up in a log or a report.
-export type Ask = (url: string) => Promise<{ status: number; body: unknown }>;
+// `ledger` is what the node was asked for this one address, in order. **The answer alone is not enough to
+// judge most of the nine sentences**: "we said fifteen" can only be compared with what the node handed us, and
+// that number is nowhere in the response. Whoever builds `ask` collects it (check/trace.ts).
+export type Ask = (
+  url: string,
+) => Promise<{ status: number; body: unknown; ledger: readonly NodeCall[] }>;
 
 export type CheckUser = { name: string; ask: Ask };
 
@@ -42,7 +50,7 @@ export type EndpointSpec = {
   need?: string;
 };
 
-export type Level = "responds" | "schema" | "filled";
+export type Level = "responds" | "schema" | "filled" | "mapping";
 export type Finding = { user: string; url: string; level: Level; message: string };
 
 export type CheckReport = {
@@ -178,8 +186,9 @@ export async function runCheck(users: readonly CheckUser[], now: Now): Promise<C
         asked += 1;
         let status: number;
         let body: unknown;
+        let ledger: readonly NodeCall[];
         try {
-          ({ status, body } = await user.ask(url));
+          ({ status, body, ledger } = await user.ask(url));
         } catch (error) {
           findings.push({
             user: user.name,
@@ -221,6 +230,29 @@ export async function runCheck(users: readonly CheckUser[], now: Now): Promise<C
         if (empty !== null) {
           findings.push({ user: user.name, url, level: "filled", message: empty });
         }
+
+        // ④ Every value in it came from somewhere. The rules for this address (check/mappings/) build the
+        // answer again from what the node said, and the two are compared slot by slot. An address with no
+        // rules is left at the first three levels rather than compared against nothing.
+        const mapping = MAPPINGS[label];
+        if (mapping !== undefined) {
+          const expectation = mapping.expected({ user: user.name, url, trace: ledger, now });
+          if (!expectation.ok) {
+            findings.push({
+              user: user.name,
+              url,
+              level: "mapping",
+              message: `the expected answer could not be built — ${expectation.why}`,
+            });
+          } else {
+            for (const problem of checkPages(expectation.body, expectation.pages ?? [])) {
+              findings.push({ user: user.name, url, level: "mapping", message: problem });
+            }
+            for (const difference of differences(expectation.body, body)) {
+              findings.push({ user: user.name, url, level: "mapping", message: difference });
+            }
+          }
+        }
       }
     };
 
@@ -252,12 +284,13 @@ export function formatReport(report: CheckReport): string {
       `${report.findings.length} discrepancies` +
       (report.findings.length === 0
         ? ""
-        : ` (answers ${perLevel("responds")} · contract ${perLevel("schema")} · content ${perLevel("filled")})`),
+        : ` (answers ${perLevel("responds")} · contract ${perLevel("schema")} · content ${perLevel("filled")}` +
+          ` · rules ${perLevel("mapping")})`),
   );
   for (const f of report.findings) {
-    const mark = { responds: "①", schema: "②", filled: "③" }[f.level];
+    const mark = { responds: "①", schema: "②", filled: "③", mapping: "④" }[f.level];
     lines.push(`  ${mark} ${f.user} ${f.url} — ${f.message}`);
   }
-  lines.push(report.ok ? "Passed — all three levels." : "Failed.");
+  lines.push(report.ok ? "Passed — every level." : "Failed.");
   return lines.join("\n");
 }
