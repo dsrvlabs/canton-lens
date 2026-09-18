@@ -126,7 +126,10 @@ export function injectingSend(real: LedgerSend, injection: Injection): Injector 
         };
       }
       if (injection.give === "not_found") {
-        return { status: 404, body: { code: "UPDATE_NOT_FOUND", cause: "injected" } };
+        // **400, not 404** (interpret.test.ts: "the status code is not 404"). Injected as a 404 it reached
+        // `not_found` through the plain status mapping, so the name-recognising branch this exists to
+        // exercise could have been deleted with the test still green (2026-09-18 codex).
+        return { status: 400, body: { code: "UPDATE_NOT_FOUND", cause: "injected" } };
       }
       if (injection.give === "after_the_end") {
         return { status: 400, body: { code: "OFFSET_AFTER_LEDGER_END", cause: "injected" } };
@@ -188,18 +191,36 @@ export type Answer = { status: number; body: unknown };
  * worse — **an answer identical to the healthy one**, which means the read that just failed was one this
  * answer never needed, and nobody knows that.
  */
-export function howItTookTheFailure(healthy: Answer, injured: Answer): string | null {
+export function howItTookTheFailure(
+  healthy: Answer,
+  injured: Answer,
+  /**
+   * The name the injected failure has to come out under (`node_error` for a node that answered badly).
+   *
+   * **Without it this oracle passes ordinary domain states.** "Any word it was not saying before" is
+   * satisfied by `kind: "empty"` and by `status: "out_of_scope"` — a screen going quietly blank is an answer
+   * that says something new, and it said nothing about the read (2026-09-18 codex). The failure the node
+   * gave is a specific one, so what is required is that specific one: named on the whole answer, or against
+   * the part of it that went dark.
+   */
+  named: string,
+): string | null {
   if (injured.status !== 200) {
     const reason = (injured.body as { reason?: unknown } | null)?.reason;
+    if (reason === named) return null;
     return typeof reason === "string"
-      ? null
+      ? `answered ${injured.status} ${reason} — the node's failure was ${named}, and renaming it loses what an operator would act on`
       : `answered ${injured.status} with no reason — a failure has to be named to be acted on`;
   }
+  // A 200 that names the part that went dark. The name has to be the node's, in the same place the healthy
+  // answer said everything was well — `schemaStatus: "node_error"` where it said "ok".
   const before = new Set(statusWords(healthy.body));
   const said = statusWords(injured.body).filter((word) => !before.has(word));
-  if (said.length > 0) return null;
+  if (said.some((word) => word.endsWith(`=${named}`))) return null;
   if (JSON.stringify(healthy.body) === JSON.stringify(injured.body)) {
     return "the answer did not change at all — this read was made and then not used";
   }
-  return "answered 200 and said nothing about the read that failed";
+  return said.length === 0
+    ? "answered 200 and said nothing about the read that failed"
+    : `answered 200 and said ${said.join(" · ")} — none of which is the node's ${named}`;
 }

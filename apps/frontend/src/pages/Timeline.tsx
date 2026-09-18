@@ -80,7 +80,15 @@ export function Timeline({ hash }: { hash: string }) {
     };
   }, [api, loading, generation, atParam, fromRaw, template, party]);
 
-  return <TimelineView data={data} error={error} hash={hash} templateOptions={templateOptions} />;
+  return (
+    <TimelineView
+      data={data}
+      error={error}
+      hash={hash}
+      templateOptions={templateOptions}
+      generation={generation}
+    />
+  );
 }
 
 // **The drawing half — a function of one answer and the address, and nothing else.** No session, no effect,
@@ -90,11 +98,14 @@ export function TimelineView({
   error,
   hash,
   templateOptions = [],
+  generation = 0,
 }: {
   data: TimelineResponse | null;
   error: string | null;
   hash: string;
   templateOptions?: readonly string[];
+  /** See `ContractsView` — a full re-read restores the draft fields from the address. */
+  generation?: number;
 }) {
   const q = hashQuery(hash);
   const template = q.get("template") ?? "";
@@ -106,8 +117,8 @@ export function TimelineView({
   const [endInput, setEndInput] = useState(endRaw);
   const [fromInput, setFromInput] = useState(fromRaw);
   const applied = useMemo(
-    () => ({ template, party, endRaw, fromRaw }),
-    [template, party, endRaw, fromRaw],
+    () => ({ template, party, endRaw, fromRaw, generation }),
+    [template, party, endRaw, fromRaw, generation],
   );
   useEffect(() => {
     setTemplateInput(applied.template);

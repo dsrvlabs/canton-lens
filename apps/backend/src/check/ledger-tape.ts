@@ -225,11 +225,18 @@ const withoutRequestIds = (value: unknown): unknown => {
   const record = value as Record<string, unknown>;
   // The gRPC status shape, and only it: a numeric code beside a message and its details.
   if (typeof record.code === "number" && "message" in record && "details" in record) {
-    return {
-      code: record.code,
-      message: "(the node's wording for this request)",
-      details: "(ditto)",
-    };
+    // **Only the two fields that name the request, and every other field is kept.** Replacing the whole
+    // object dropped any sibling a future Canton adds, and a dropped field is a difference that hides
+    // (2026-09-18 codex). The code stays compared, so a failure that changed category, appeared or went
+    // away is still a conflict.
+    const kept: Record<string, unknown> = {};
+    for (const [key, at] of Object.entries(record)) {
+      kept[key] =
+        key === "message" || key === "details"
+          ? "(the node's wording for this request)"
+          : withoutRequestIds(at);
+    }
+    return kept;
   }
   const out: Record<string, unknown> = {};
   for (const [key, at] of Object.entries(record)) out[key] = withoutRequestIds(at);
@@ -286,8 +293,12 @@ function whereTheyPart(a: TapeEntry, b: TapeEntry): string {
     const short = (v: unknown) => stableStringify(v).slice(0, 80);
     return `${at || "the answer"} was ${short(left)} then ${short(right)}`;
   };
+  // **Walked with the same excusal the comparison uses.** Told the raw answers, this pointed at the failure's
+  // wording — the one difference that is *not* why they conflict — and sent a reader looking in the wrong
+  // place (2026-09-18 codex).
   return (
-    walk(a.response ?? null, b.response ?? null, "") ?? "nothing in the answer — the entry itself"
+    walk(withoutRequestIds(a.response ?? null), withoutRequestIds(b.response ?? null), "") ??
+    "nothing in the answer — the entry itself"
   );
 }
 

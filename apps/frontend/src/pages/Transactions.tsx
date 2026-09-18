@@ -86,7 +86,15 @@ export function Transactions({ hash }: { hash: string }) {
     };
   }, [api, loading, generation, lastOffset, template, party, before, filterKey]);
 
-  return <TransactionsView u={u} error={error} hash={hash} templateOptions={templateOptions} />;
+  return (
+    <TransactionsView
+      u={u}
+      error={error}
+      hash={hash}
+      templateOptions={templateOptions}
+      generation={generation}
+    />
+  );
 }
 
 // **The drawing half — a function of one response and the address, and nothing else.** No session, no
@@ -101,11 +109,14 @@ export function TransactionsView({
   error,
   hash,
   templateOptions = [],
+  generation = 0,
 }: {
   u: UpdatesResponse | null;
   error: string | null;
   hash: string;
   templateOptions?: readonly string[];
+  /** See `ContractsView` — a full re-read restores the draft fields from the address. */
+  generation?: number;
 }) {
   const q = hashQuery(hash);
   const template = q.get("template") ?? "";
@@ -115,7 +126,7 @@ export function TransactionsView({
   const [partyInput, setPartyInput] = useState(party);
   // The fields mirror the address — only when the address changed. Mirroring on every draw would wipe
   // what is being typed.
-  const applied = useMemo(() => ({ template, party }), [template, party]);
+  const applied = useMemo(() => ({ template, party, generation }), [template, party, generation]);
   useEffect(() => {
     setTemplateInput(applied.template);
     setPartyInput(applied.party);

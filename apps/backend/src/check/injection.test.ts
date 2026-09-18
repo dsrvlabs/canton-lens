@@ -133,7 +133,9 @@ test("every read of every address, broken one at a time, is answered by saying s
         );
         continue;
       }
-      const wrong = howItTookTheFailure(healthy.answer, injured.answer);
+      // The node answered badly, so `node_error` is the name this application gives it — anywhere in the
+      // answer, on the whole of it or against the part that went dark.
+      const wrong = howItTookTheFailure(healthy.answer, injured.answer, "node_error");
       if (wrong !== null) findings.push(`${label} · ${path} — ${wrong}`);
     }
   }
@@ -243,31 +245,44 @@ test("one blueprint that could not be read is a row that says so, and a catalogu
 });
 
 test("a short list served as a whole one is what this exists to catch", async () => {
-  // The failure mode itself, stated as a test rather than trusted to the sweep: an answer that swallows the
-  // failure is a 200 whose body says nothing, and `howItTookTheFailure` has to call that a finding. Without
-  // this, a marker-finder that matched anything at all would make the sweep green while looking at nothing.
+  // The failure mode itself, stated as a test rather than trusted to the sweep. The sweep asks one question
+  // of a hundred reads; this says exactly what that question is, and the four answers below are the four it
+  // has to tell apart.
   const healthy: Answer = { status: 200, body: { rows: [1, 2, 3], total: 3 } };
+  const took = (injured: Answer) => howItTookTheFailure(healthy, injured, "node_error");
+
   assert.equal(
-    howItTookTheFailure(healthy, { status: 200, body: { rows: [], total: 0 } }),
+    took({ status: 200, body: { rows: [], total: 0 } }),
     "answered 200 and said nothing about the read that failed",
   );
   assert.equal(
-    howItTookTheFailure(healthy, healthy),
+    took(healthy),
     "the answer did not change at all — this read was made and then not used",
   );
-  assert.equal(howItTookTheFailure(healthy, { status: 502, body: { reason: "node_error" } }), null);
+  assert.equal(took({ status: 502, body: { reason: "node_error" } }), null);
   assert.equal(
-    howItTookTheFailure(healthy, { status: 502, body: {} }),
+    took({ status: 502, body: {} }),
     "answered 502 with no reason — a failure has to be named to be acted on",
   );
-  // And a 200 that names the part that went dark is a good answer, not a finding.
+  // A 200 that names the part that went dark, in the node's own word, is a good answer.
+  assert.equal(took({ status: 200, body: { rows: [1, 2, 3], schemaStatus: "node_error" } }), null);
+
+  // **And the three an "any word it was not saying before" oracle let through** (2026-09-18 codex). Each is
+  // an answer that went quietly blank while saying something new — a different domain state, or a failure
+  // renamed into one an operator cannot act on.
   assert.equal(
-    howItTookTheFailure(healthy, {
-      status: 200,
-      body: { rows: [1, 2, 3], schema: { status: "unavailable" } },
-    }),
-    null,
+    took({ status: 200, body: { kind: "empty", rows: [] } }),
+    "answered 200 and said kind=empty — none of which is the node's node_error",
   );
+  assert.equal(
+    took({ status: 200, body: { status: "out_of_scope", rows: [] } }),
+    "answered 200 and said status=out_of_scope — none of which is the node's node_error",
+  );
+  assert.equal(
+    took({ status: 404, body: { reason: "not_found" } }),
+    "answered 404 not_found — the node's failure was node_error, and renaming it loses what an operator would act on",
+  );
+
   assert.deepEqual(statusWords({ a: { status: "unavailable", reason: "x" } }), [
     "reason=x",
     "status=unavailable",

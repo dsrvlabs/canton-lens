@@ -123,6 +123,7 @@ export function Contracts({ hash }: { hash: string }) {
       error={error}
       hash={hash}
       templateOptions={templateOptions}
+      generation={generation}
       onOlder={() => void older()}
     />
   );
@@ -140,12 +141,20 @@ export function ContractsView({
   error,
   hash,
   templateOptions = [],
+  generation = 0,
   onOlder,
 }: {
   page: Page | null;
   error: string | null;
   hash: string;
   templateOptions?: readonly string[];
+  /**
+   * How many times everything has been re-read. **A draft filter is part of the screen, and Refresh restores
+   * the screen from the address.** The fetching half used to hold these fields, so a re-read reset them; with
+   * them moved here the generation has to come too, or a typed-but-unapplied filter survives a Refresh and
+   * the fields stop agreeing with the list beneath them (2026-09-18 codex).
+   */
+  generation?: number;
   onOlder?: () => void;
 }) {
   const q = hashQuery(hash);
@@ -155,7 +164,7 @@ export function ContractsView({
   const [partyInput, setPartyInput] = useState(party);
   // The fields mirror the address — when the address changed. Mirroring on every draw would wipe what is
   // being typed.
-  const applied = useMemo(() => ({ template, party }), [template, party]);
+  const applied = useMemo(() => ({ template, party, generation }), [template, party, generation]);
   useEffect(() => {
     setTemplateInput(applied.template);
     setPartyInput(applied.party);

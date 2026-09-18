@@ -81,8 +81,13 @@ test("each condition says which rule it keeps alive", () => {
 
 test("a recording that holds nothing fails every one of them", () => {
   // **The pass has to be able to fail.** A condition whose predicate is accidentally true of an empty answer
-  // — reading a slot at the wrong depth is the usual way — reports a green that means nothing, and it reads
-  // exactly like a recording that is complete.
+  // reports a green that means nothing.
+  //
+  // **What this does not catch, and what does** (2026-09-18 codex): a predicate that is *never* true — one
+  // reading a slot at the wrong depth, say — is false here too, so this test passes and says nothing. Three
+  // such predicates existed and were found by the run itself, which reported the conditions unmet against a
+  // recording that plainly held the material. That is the guard for always-false, and it is the run in
+  // `run-check.test.ts`, not this file. Both are needed and neither replaces the other.
   const empty = [
     "/api/contracts",
     "/api/contracts?pageSize=2",

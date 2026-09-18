@@ -73,6 +73,30 @@ const at = (label: string, seen: Sighting) => seen.label === label;
  */
 const viewOf = (body: unknown): Record<string, unknown> => rec(rec(body).view);
 
+/**
+ * Whether the node's answer to this address held an event where one of **this person's own** parties is
+ * among the witnesses, standing in the relation `how` to that event's stakeholders.
+ *
+ * Read from the trace rather than from our answer on purpose: the rule under test is the one that decides
+ * what our answer says about witnesses, so asking our answer would be asking the suspect. The party list is
+ * this person's declared one, because the rule never looks at anybody else's.
+ */
+function witnessedHere(
+  seen: Sighting,
+  how: (stakeholders: Set<string>, who: string) => boolean,
+): boolean {
+  const mine = new Set(seen.given.parties.map((p) => p.party));
+  return seen.trace.some((call) =>
+    [...everyRecord(call.answer)].some((event) => {
+      if (!Array.isArray(event.witnessParties) || !Array.isArray(event.signatories)) return false;
+      const stakeholders = new Set([...arr(event.signatories), ...arr(event.observers)]);
+      return arr(event.witnessParties).some(
+        (who) => typeof who === "string" && mine.has(who) && how(stakeholders, who),
+      );
+    }),
+  );
+}
+
 export const CONDITIONS: readonly Condition[] = [
   // ── the walk ───────────────────────────────────────────────────────────────────
   {
@@ -181,16 +205,11 @@ export const CONDITIONS: readonly Condition[] = [
     // whether this shows up in our answer, so asking our answer whether it showed up would be asking the
     // suspect. What the trace holds is the fact itself: an event whose witnesses include somebody who is
     // neither a signatory nor an observer of it.
+    // The witness has to be **one of this person's parties** — an event witnessed by somebody else exercises
+    // nothing, because the rule only ever runs over the parties the viewer holds (2026-09-18 codex).
     shown: (seen) =>
       seen.label === "/api/updates/{updateId}" &&
-      seen.trace.some((call) =>
-        [...everyRecord(call.answer)].some((event) => {
-          if (!Array.isArray(event.witnessParties) || !Array.isArray(event.signatories))
-            return false;
-          const party = new Set([...arr(event.signatories), ...arr(event.observers)]);
-          return arr(event.witnessParties).some((who) => !party.has(who));
-        }),
-      ),
+      witnessedHere(seen, (stakeholders, who) => !stakeholders.has(who)),
   },
   {
     name: "an opened update where a party is both a stakeholder and listed among the witnesses",
@@ -198,14 +217,7 @@ export const CONDITIONS: readonly Condition[] = [
       "«a stakeholder is not also reported as a witness» — the clause that keeps the third capacity from being added to the first two. Canton lists the requesting parties as witnesses of their own events, so without this the word would appear beside every party on the screen",
     shown: (seen) =>
       seen.label === "/api/updates/{updateId}" &&
-      seen.trace.some((call) =>
-        [...everyRecord(call.answer)].some((event) => {
-          if (!Array.isArray(event.witnessParties) || !Array.isArray(event.signatories))
-            return false;
-          const party = new Set([...arr(event.signatories), ...arr(event.observers)]);
-          return arr(event.witnessParties).some((who) => party.has(who));
-        }),
-      ),
+      witnessedHere(seen, (stakeholders, who) => stakeholders.has(who)),
   },
 
   // ── the screen ─────────────────────────────────────────────────────────────────
