@@ -22,6 +22,7 @@ const holder: Given = {
   ],
   readsEveryParty: false,
   seesContracts: true,
+  seesMoreThanOnePage: true,
   seesUpdates: true,
 };
 
@@ -29,6 +30,7 @@ const superReader: Given = {
   parties: [],
   readsEveryParty: true,
   seesContracts: true,
+  seesMoreThanOnePage: true,
   seesUpdates: true,
 };
 

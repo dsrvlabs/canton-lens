@@ -225,10 +225,10 @@ export const timelineMapping: Mapping<CheckContext> = {
           // carries no signatories or observers. Whichever order the material arrives in, the creation is
           // the event that knows the stakeholders, so it is the one that wins.
           //
-          // **The tape does not hold such a lifecycle**, which is exactly why this was worth writing: for a
-          // while the product had this wrong, the fix went in, and this restatement still said the old
-          // thing. Both were green. "A contract created and archived inside one window" joins the data
-          // conditions the seed owes.
+          // For a while the product had this wrong, the fix went in, and this restatement still said the old
+          // thing — and both were green, because nothing in the window had both events. The seed holds such a
+          // lifecycle now and the recording is required to keep holding one (check/conditions.ts): reverting
+          // the product's fix goes red in forty-five places.
           const already = seenAs.get(contractId);
           if (already === undefined || (created !== undefined && already.parties.length === 0)) {
             seenAs.set(contractId, {

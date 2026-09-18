@@ -97,10 +97,9 @@ const PROBLEM: Record<string, Rule<{ contractId: string; message: string }>> = {
   ),
 };
 
-// **The order is stated, but the tape does not yet exercise all of it.** Dropping the valid-before-expired
-// step from the product changes nothing in the recorded answers: no person holds both an expired and an
-// unexpired preapproval with the same receiver. That is a gap in the seed, not in the rule — the sentence
-// stays as written, and the data condition belongs on the list for the seed to grow.
+// **The whole order is exercised since 2026-09-18.** Two people now hold an expired and an unexpired
+// preapproval with the same receiver, so the second key decides something: dropping the valid-before-expired
+// step goes red in forty-two places. That the material is there is itself checked (check/conditions.ts).
 const VIEW: Record<
   string,
   Rule<{ rows: Row[]; problems: { contractId: string; message: string }[] }>

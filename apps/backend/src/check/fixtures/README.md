@@ -11,12 +11,12 @@ CI has no Canton node. So `run-check.test.ts` stands these files up in the ledge
 
 | | |
 |---|---|
-| Recorded at | 2026-09-18T09:46:47.305Z |
+| Recorded at | 2026-09-18T11:29:29.850Z |
 | Ledger | `http://localhost:7575` (a local dev stack, outside this repo) |
 | Canton version | 3.5.15 |
 | People | alice · bob · carol · nobody · idp · padmin · actor · super* · superplus* · dual · mixed · dave |
-| Ledger end | 161 — the point every answer here was read at |
-| Addresses asked | 344 (everything the check actually asks) |
+| Ledger end | 263 — the point every answer here was read at |
+| Addresses asked | 352 (everything the check actually asks) |
 
 **Recorded with user tokens.** Recorded with an admin token, the files would hold everything rather than the
 boundary Canton enforces, and then they would be material unrelated to the statement this product exists to
@@ -35,8 +35,8 @@ because reading that from our own list would let an application that drops rows 
 
 | | |
 |---|---|
-| `ledger.jsonl` | 473 ledger questions and their answers. One pair per line |
-| `packages/*.bin` | The raw bytes of 32 packages (358 KB) — the input to blueprint reading |
+| `ledger.jsonl` | 477 ledger questions and their answers. One pair per line |
+| `packages/*.bin` | The raw bytes of 32 packages (378 KB) — the input to blueprint reading |
 | `meta.json` | The manifest the test reads — the instant recorded, the Canton version, and per person the party classification their rights imply and whether the seed left them anything to see |
 
 **The test uses `meta.json`'s `recordedAt` as its "now".** Judging expiry hangs on that value, so using the
@@ -68,6 +68,29 @@ left out.
 They were removed from the ledger's package **list** too. Left in, the catalog comes asking for those bytes and
 "blueprint could not be read" rows appear — removed, the result is indistinguishable from a node where those
 packages were never uploaded.
+
+## What this recording has to contain
+
+A rule nothing reaches cannot be wrong, and nothing above level ⑥ can tell that apart from a rule that held.
+So the check requires the recording to hold each of these by name (`../conditions.ts`), and says which one
+went missing:
+
+- somebody sees more active contracts than one node page holds, so the walk resumes
+- the second page of a list is actually asked for, with the cursor the first page gave
+- one list is long enough that the first page is not the whole of it
+- somebody holds a token whose balance decays by the round
+- a contract whose standard view the node could not compute
+- one person holds an expired and an unexpired preapproval with the same receiver
+- a contract created and archived inside one window
+- an opened update where one of my parties is an observer and not a signatory
+- an opened update where one of my parties saw an event it is not a party to
+- an opened update where a party is both a stakeholder and listed among the witnesses
+- somebody's home page has more recent updates than it draws
+- a person the seed left nothing at all
+
+There are also 5 the check states it **cannot** have here, each with the reason — a point
+lookup that is not a transaction needs two synchronizers, and so on. They are on the same list so that "no
+seed could give this" never reads as "somebody forgot".
 
 ## Re-recording
 

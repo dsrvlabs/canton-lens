@@ -33,6 +33,13 @@ export type Given = {
    */
   seesContracts: boolean;
   /**
+   * Whether they see **more than two** active contracts — the size of the small page the check asks with, so
+   * the question is "is there a second page at all". Declared for the same reason as the flag above: the
+   * cursor only means something when a page follows it, and deciding that from our own answer would let a
+   * list that stopped early say there was nothing more.
+   */
+  seesMoreThanOnePage: boolean;
+  /**
    * Whether any update in the window this check asks about is visible to them. **Separate from the
    * contracts, because they come from different reads**: the active contracts are a snapshot, the updates are
    * history. A person can hold nothing today and still have archived something yesterday, and one flag for

@@ -21,6 +21,7 @@ const sees = (parties: ViewerParty[], readsEveryParty = false): Given => ({
   parties,
   readsEveryParty,
   seesContracts: true,
+  seesMoreThanOnePage: true,
   seesUpdates: true,
 });
 /** Holds a party and the seed left them nothing — neither a contract nor an update in the window. */
@@ -28,6 +29,7 @@ const empty = (parties: ViewerParty[]): Given => ({
   parties,
   readsEveryParty: false,
   seesContracts: false,
+  seesMoreThanOnePage: false,
   seesUpdates: false,
 });
 /** Holds no party and no scope: the node reads nothing for them, so there is nothing to see either. */
@@ -35,6 +37,7 @@ const NOTHING: Given = {
   parties: [],
   readsEveryParty: false,
   seesContracts: false,
+  seesMoreThanOnePage: false,
   seesUpdates: false,
 };
 
@@ -87,9 +90,9 @@ test("the zeros that are right are exactly twenty-three, and every one of them h
     );
   }
 
-  // A viewer with no reading scope: the six round-two addresses all come from a list that is refused them.
+  // A viewer with no reading scope: the seven round-two addresses all come from a list that is refused them.
   for (const name of ["nobody", "idp", "padmin"]) {
-    assert.equal(zeros[name]?.length, 6, `${name} should have six`);
+    assert.equal(zeros[name]?.length, 7, `${name} should have seven`);
   }
   // A super reader is served everything and still has no party of their own to look up.
   assert.deepEqual(zeros.super, ["/api/party/{partyId}"]);
@@ -98,6 +101,7 @@ test("the zeros that are right are exactly twenty-three, and every one of them h
   // Someone the seed gave nothing has no contract and no update to name — but the package catalog is every
   // installed package, and the session still names their own party, so those two are asked.
   assert.deepEqual(zeros.dave, [
+    "/api/contracts (the second page)",
     "/api/contracts/{contractId}",
     "/api/updates/{updateId}",
     "/api/updates/by-offset/{offset}",
@@ -108,9 +112,9 @@ test("the zeros that are right are exactly twenty-three, and every one of them h
   }
 
   const total = Object.values(zeros).reduce((n, list) => n + list.length, 0);
-  assert.equal(total, 23, `the legitimate zeros moved: ${JSON.stringify(zeros)}`);
-  // Twelve people × eighteen addresses, less the zeros.
-  assert.equal(12 * 18 - total, 193);
+  assert.equal(total, 27, `the legitimate zeros moved: ${JSON.stringify(zeros)}`);
+  // Twelve people × nineteen addresses, less the zeros.
+  assert.equal(12 * 19 - total, 201);
 });
 
 test("the probes nobody has the material for are these, person by person", () => {
@@ -172,10 +176,11 @@ test("a viewer with no reading scope is served, refused and left unasked in the 
     report.findings.filter((f) => f.level === "responds"),
     [],
   );
-  // And the six that could not be asked are written down with a reason rather than counted as failures.
+  // And the seven that could not be asked are written down with a reason rather than counted as failures.
   assert.deepEqual(
     report.notAsked.map((n) => n.url),
     [
+      "/api/contracts (the second page)",
       "/api/contracts/{contractId}",
       "/api/updates/{updateId}",
       "/api/updates/by-offset/{offset}",

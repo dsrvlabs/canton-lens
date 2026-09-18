@@ -351,6 +351,31 @@ export const ROUND_ONE: readonly EndpointSpec[] = [
 // round two could not be asked" must never pass as green — that is the very hole ③ was meant to block.
 export const ROUND_TWO: readonly EndpointSpec[] = [
   {
+    // **The second page, asked with the cursor the first page handed back.** Without this the cursor is a
+    // value the check reads and nobody sends: `nextCursor` could name any row at all and every level would
+    // still be green, because the only thing that can tell a good cursor from a bad one is what comes back
+    // when you use it.
+    template: "/api/contracts",
+    url: (h) => h.nextPage,
+    name: "/api/contracts (the second page)",
+    need: "nextCursor (of /api/contracts?pageSize=2)",
+    status: needsAParty,
+    // Nobody with fewer than three contracts has a second page, and that is not a defect — it is the first
+    // page being the whole list. Said from what the person was given, never from the answer we got.
+    unaskable: (given) => {
+      if (!canRead(given)) return "holds no reading scope, so the contract list is refused";
+      if (!given.seesContracts) return "the seed left this person no active contract";
+      if (!given.seesMoreThanOnePage) {
+        return "sees two contracts or fewer, so the small first page is the whole list";
+      }
+      return null;
+    },
+    // **A page that came back empty is the failure this exists to catch.** A cursor that does not advance
+    // past the rows already shown either repeats them or runs off the end, and both are visible here and
+    // nowhere else.
+    filled: (body, given) => listMatches(len(body, "rows"), given.seesContracts, "rows"),
+  },
+  {
     template: "/api/contracts/{contractId}",
     url: (h) => (h.contractId ? `/api/contracts/${encodeURIComponent(h.contractId)}` : null),
     need: "contractId (rows[0] of /api/contracts)",
@@ -463,6 +488,12 @@ export type Harvest = {
   offset: number | null;
   packageId: string | null;
   partyId: string | null;
+  /**
+   * The cursor the small first page handed back, already written as query parameters. **Taken from the
+   * answer and sent back untouched** — that is what the screen does, and a cursor the check built itself
+   * would be checking a rule against its own arithmetic instead of against the one the answer carries.
+   */
+  nextPage: string | null;
 };
 
 export function harvest(bodies: ReadonlyMap<string, unknown>): Harvest {
@@ -473,11 +504,25 @@ export function harvest(bodies: ReadonlyMap<string, unknown>): Harvest {
   const okPackage = rows("/api/catalog/packages").find((r) => r.schemaStatus === "ok");
   const firstParty = arr(rec(bodies.get("/api/session")).parties).map(rec)[0];
 
+  // The cursor is a record of three, and the address takes them one at a time. `offset` is allowed to be
+  // null — a row with no offset sorts to the back and its cursor says so — and then that key is left out
+  // rather than sent as the word "null".
+  const cursor = rec(rec(bodies.get("/api/contracts?pageSize=2")).nextCursor);
+  const createdAt = str(cursor.createdAt);
+  const cursorContract = str(cursor.contractId);
+  const nextPage =
+    createdAt === null || cursorContract === null
+      ? null
+      : `/api/contracts?pageSize=2&cursorCreatedAt=${encodeURIComponent(createdAt)}` +
+        `&cursorContractId=${encodeURIComponent(cursorContract)}` +
+        (typeof cursor.offset === "number" ? `&cursorOffset=${cursor.offset}` : "");
+
   return {
     contractId: str(rows("/api/contracts")[0]?.contractId),
     updateId: str(firstUpdate?.updateId),
     offset: typeof firstUpdate?.offset === "number" ? firstUpdate.offset : null,
     packageId: str(okPackage?.packageId),
     partyId: str(firstParty?.party),
+    nextPage,
   };
 }

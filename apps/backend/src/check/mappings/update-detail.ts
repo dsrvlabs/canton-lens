@@ -115,15 +115,18 @@ type Reason = { party: string; roles: string[]; eventIndexes: number[] };
 
 const VISIBILITY_REASON: Record<string, Rule<Reason>> = {
   party: app("one of my parties, in the order my rights list them", (r) => r.party),
-  // **The tape does not exercise the last clause.** Letting a stakeholder be reported as a witness too
-  // changes nothing in the recorded answers: no party of mine is both in the same event. The sentence stays
-  // as written, and "a signatory who is also listed as a witness" joins the data conditions the seed owes.
+  // **All three capacities are exercised since 2026-09-18.** Canton lists the requesting parties among the
+  // witnesses of their own events, so the last clause — a stakeholder is not *also* called a witness — decides
+  // something on every event there is; dropping it goes red. And the seed now holds an event a party sees
+  // without being party to it (a create under somebody else's exercise), which is the only place the third
+  // capacity is reached at all: remove it and alice's own update answers "no_party_found".
   roles: app(
     "signatory and observer where that party is among them, in that order; witness only when it is neither and the node lists it as a witness — a stakeholder is not also reported as a witness",
     (r) => r.roles,
   ),
-  // The observer role is never taken in the tape: every party of mine that appears in an opened update is a
-  // signatory or a witness. One more data condition the seed owes (2026-09-18 codex).
+  // The observer role is taken since the seed grew: carol's own updates are creations she owns and does not
+  // sign. Both facts — an observer, and a witness who is not a stakeholder — are required of the recording by
+  // name (check/conditions.ts), because a rule nothing reaches cannot be wrong.
   eventIndexes: app(
     "which events of this transaction it appears in, by position, in order — one entry per appearance",
     (r) => r.eventIndexes,

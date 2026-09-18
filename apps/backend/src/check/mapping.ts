@@ -137,6 +137,24 @@ export const firstN = <T>(all: readonly T[], n: number, at: { totalAt: string })
   totalAt: at.totalAt,
 });
 
+/**
+ * The same declaration for a page that does **not** start at the beginning — one asked for with a cursor.
+ *
+ * `of` has to be given separately because the two numbers are no longer the same one: the rows cut from are
+ * the tail after the cursor, while the count the answer states is the whole list. A cursor moves where a page
+ * starts; it does not make the rows before it stop existing, and an answer whose total shrank as it was read
+ * would tell the screen the list is getting smaller.
+ */
+export const nFrom = <T>(
+  tail: readonly T[],
+  n: number,
+  at: { of: number; totalAt: string },
+): Page<T> => ({
+  shown: tail.slice(0, n),
+  total: at.of,
+  totalAt: at.totalAt,
+});
+
 // ── What a mapping is ────────────────────────────────────────────────────────────
 export type Expectation =
   | { ok: true; body: unknown; pages?: readonly Page<unknown>[] }

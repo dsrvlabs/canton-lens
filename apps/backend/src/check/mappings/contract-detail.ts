@@ -140,9 +140,12 @@ const CONTRACT_DETAIL_RESPONSE: Record<string, Rule<Answer>> = {
   signatories: app("the node's signatories", signatoriesOf),
   observers: app("the node's observers", observersOf),
   createdAt: node("event.createdAt"),
-  // **Not exercised by the tape**: the contract the check opens carries no interface view, so forcing the
-  // product to answer generic changes nothing. The rule stays as written, and "open a contract that
-  // implements an interface" joins the data conditions the seed owes.
+  // **Unreachable through this address, and not for want of data** (2026-09-18): this path reads the active
+  // contracts with a wildcard filter (router.ts), which asks for no interface view at all, so no answer it can
+  // give carries one and `interface` cannot come out of it whatever the ledger holds. Seeding a contract that
+  // implements one — and the seed now has several — changes nothing here. The rule stays as written because
+  // the shape it describes is real; what would reach it is a different question than this address asks
+  // (check/conditions.ts records it as out of reach rather than owed).
   renderMode: app(
     "interface when the node attached any interface view to this contract, generic when it attached none",
     (a) => (arr(a.event.interfaceViews).length > 0 ? "interface" : "generic"),

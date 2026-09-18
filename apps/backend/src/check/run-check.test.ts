@@ -123,16 +123,16 @@ test("stands up the recorded ledger and passes every level (twelve people)", asy
     "runs as twelve people — the boundary is only visible where the people differ",
   );
   // **Two tables, two counts, both derived rather than observed.**
-  //   the addresses:  18 × 12 = 216, less the 23 that legitimately cannot be put to someone → 193
+  //   the addresses:  19 × 12 = 228, less the 27 that legitimately cannot be put to someone → 201
   //   the probes:     15 kinds × 12 = 180, less the 29 nobody has the material for → 151
   // Both breakdowns are worked out person by person in expectations.test.ts; a number that moves without a
   // person's shape changing is the thing these assertions exist to catch.
   const PROBE_KINDS = PROBES.reduce((n, probe) => n + probe.kinds.length, 0);
   assert.equal(PROBE_KINDS, 15, "the probe matrix changed shape");
-  assert.equal(report.asked, 193 + 151, `asked ${report.asked} times`);
+  assert.equal(report.asked, 201 + 151, `asked ${report.asked} times`);
   assert.equal(
     report.notAsked.length,
-    23 + 29,
+    27 + 29,
     `${report.notAsked.length} were rightly not asked — both counts are derived in expectations.test.ts`,
   );
 });

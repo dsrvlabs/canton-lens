@@ -28,6 +28,9 @@ export const MAPPINGS: Record<string, Mapping<CheckContext>> = {
   // list and the cursor that the default page size never reaches.
   "/api/contracts": contractsMapping,
   "/api/contracts?pageSize=2": contractsMapping,
+  // The same rules, asked once more with the cursor the small page handed back. One address, two questions —
+  // and the second is the only one where a cursor that does not advance shows up at all.
+  "/api/contracts (the second page)": contractsMapping,
   "/api/contracts/{contractId}": contractDetailMapping,
   "/api/catalog/packages": packagesCatalogMapping,
   "/api/catalog/templates": templatesCatalogMapping,

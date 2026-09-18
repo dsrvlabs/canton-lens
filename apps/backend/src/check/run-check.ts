@@ -15,6 +15,7 @@ import { Ajv2020 } from "ajv/dist/2020.js";
 import { openApiDocument } from "../openapi.ts";
 import { routeOperations } from "../routes.ts";
 import { questionProblems } from "./asked-well.ts";
+import { type Sighting, unmet } from "./conditions.ts";
 import { type Harvest, harvest, ROUND_ONE, ROUND_TWO } from "./expectations.ts";
 import type { Given } from "./given.ts";
 import { checkPages, differences } from "./mapping.ts";
@@ -88,7 +89,7 @@ export type EndpointSpec = {
   unaskable?: (given: Given) => string | null;
 };
 
-export type Level = "responds" | "schema" | "filled" | "mapping" | "sameness";
+export type Level = "responds" | "schema" | "filled" | "mapping" | "sameness" | "material";
 export type Finding = { user: string; url: string; level: Level; message: string };
 
 /** An address that was rightly not put to someone, and why. Counted and printed, never silent. */
@@ -212,6 +213,7 @@ export async function runCheck(users: readonly CheckUser[], now: Now): Promise<C
   const validators = schemaValidators();
   const findings: Finding[] = [];
   const notAsked: NotAsked[] = [];
+  const sightings: Sighting[] = [];
   let asked = 0;
 
   // **The three sets of addresses have to be one set.** The router answers some addresses, openapi declares
@@ -352,6 +354,10 @@ export async function runCheck(users: readonly CheckUser[], now: Now): Promise<C
           findings.push({ user: user.name, url, level: "schema", message: sayErrors(validate) });
         }
 
+        // Kept for ⑥. Every 200 goes in, whatever it holds — a condition asks whether the material ever
+        // arrived anywhere, so it is answered across all of them and not one address at a time.
+        sightings.push({ user: user.name, given: user.given, label, url, body, trace: ledger });
+
         // ③ It has content. Checked even when ② failed — with both at once, looking at one misdiagnoses.
         const empty = spec.filled(body, user.given);
         if (empty !== null) {
@@ -403,6 +409,7 @@ export async function runCheck(users: readonly CheckUser[], now: Now): Promise<C
       offset: null,
       packageId: null,
       partyId: null,
+      nextPage: null,
     };
     await round(ROUND_ONE, NOTHING);
     const harvested = harvest(bodies);
@@ -500,6 +507,18 @@ export async function runCheck(users: readonly CheckUser[], now: Now): Promise<C
     }
   }
 
+  // ⑥ **The material the rules stand on is still there.** Nothing above can see this: a rule about decaying
+  // tokens is agreed with perfectly by a ledger that issues none, and so is a rule that was deleted. What is
+  // judged here is the recording, not the product — which is why the sentence says so.
+  for (const condition of unmet(sightings)) {
+    findings.push({
+      user: "(all)",
+      url: condition.name,
+      level: "material",
+      message: `nothing answered here holds it, so the rule it keeps is exercised by nothing — ${condition.keeps}`,
+    });
+  }
+
   return {
     users: users.map((u) => u.name),
     asked,
@@ -519,10 +538,17 @@ export function formatReport(report: CheckReport): string {
       (report.findings.length === 0
         ? ""
         : ` (answers ${perLevel("responds")} · contract ${perLevel("schema")} · content ${perLevel("filled")}` +
-          ` · rules ${perLevel("mapping")} · sameness ${perLevel("sameness")})`),
+          ` · rules ${perLevel("mapping")} · sameness ${perLevel("sameness")} · material ${perLevel("material")})`),
   );
   for (const f of report.findings) {
-    const mark = { responds: "①", schema: "②", filled: "③", mapping: "④", sameness: "⑤" }[f.level];
+    const mark = {
+      responds: "①",
+      schema: "②",
+      filled: "③",
+      mapping: "④",
+      sameness: "⑤",
+      material: "⑥",
+    }[f.level];
     lines.push(`  ${mark} ${f.user} ${f.url} — ${f.message}`);
   }
   for (const n of report.notAsked) lines.push(`  · ${n.user} ${n.url} — not asked: ${n.why}`);

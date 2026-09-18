@@ -26,9 +26,9 @@ import { acsPagesForInterface, arr, fqn, ledgerEnd, myParties, rec, str } from "
 // **Tokens whose balance decays each round.** Layer 1 carries nothing that says so, so the product keeps one
 // list and this states the same one. Splice CC is the case: an exact balance is not available, and neither a
 // zero nor a face-value sum presented as exact would be true.
-// **The tape does not hold one.** Replacing the product's decay judgment with a constant changes nothing in
-// the recorded answers: the seeded stack issues no Splice.Amulet. The sentence stays as written, and
-// "somebody holds a decaying token" goes on the list of data conditions the seed still owes.
+// **Exercised since 2026-09-18.** The seed now issues a Splice.Amulet:Amulet — the module and entity are what
+// the rule keys on, so naming them is all it takes. Replacing the product's decay judgment with a constant
+// now goes red in ten places. That the material is there is itself checked (check/conditions.ts).
 const DECAYING = [
   { module: "Splice.Amulet", entity: "Amulet" },
   { module: "Splice.Amulet", entity: "LockedAmulet" },

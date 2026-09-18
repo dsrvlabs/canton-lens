@@ -13,8 +13,8 @@ import {
   buildObject,
   type CheckContext,
   type Expectation,
-  firstN,
   type Mapping,
+  nFrom,
   node,
   type Rule,
 } from "../mapping.ts";
@@ -134,6 +134,29 @@ const pageSizeOf = (url: string): number => {
     : DEFAULT_PAGE_SIZE;
 };
 
+/**
+ * **Where a page begins.** The address may carry the cursor a previous page handed back — three values that
+ * name one row — and the page then starts at the first row that sorts *strictly after* it.
+ *
+ * Written out here because it is the one rule a single page cannot show: a cursor that stops one row early
+ * repeats a row, a cursor that stops one row late loses one, and the first page's answer is identical in
+ * both cases. A cursor read and never sent is a value nothing checks (2026-09-18).
+ */
+const cursorOf = (url: string): Event | null => {
+  const query = new URL(url, "http://check").searchParams;
+  const createdAt = query.get("cursorCreatedAt");
+  const contractId = query.get("cursorContractId");
+  if (createdAt === null || contractId === null) return null;
+  const offset = query.get("cursorOffset");
+  return {
+    createdAt,
+    contractId,
+    // A row with no offset sorts to the back and its cursor says so by leaving the key out — the same rule
+    // `newestFirst` states with -1.
+    ...(offset !== null && /^[0-9]+$/.test(offset) ? { offset: Number.parseInt(offset, 10) } : {}),
+  };
+};
+
 // ── The whole answer ─────────────────────────────────────────────────────────────
 
 // What the top-level rules are handed: the trace already read, sorted and cut. Doing that here rather than
@@ -144,7 +167,9 @@ type Answer = {
   end: number;
   /** Every active contract the node returned, newest first. */
   ordered: Event[];
-  /** The part of it that fits on this page. */
+  /** The tail of it that starts after the cursor the address carried — all of it when it carried none. */
+  remaining: Event[];
+  /** The part of *that* which fits on this page. */
   shown: Event[];
   mine: string[];
 };
@@ -157,10 +182,10 @@ const CONTRACTS_RESPONSE: Record<string, Rule<Answer>> = {
     (a) => a.shown.map((event) => buildObject(CONTRACT_LIST_ROW, { event, mine: a.mine })),
   ),
   nextCursor: app(
-    "the last shown row when the node returned more than fit, otherwise null",
+    "the last shown row when more was left after this page than fitted on it, otherwise null",
     (a) => {
       const last = a.shown[a.shown.length - 1];
-      const more = a.shown.length < a.ordered.length;
+      const more = a.shown.length < a.remaining.length;
       return more && last !== undefined ? buildObject(CONTRACT_LIST_CURSOR, last) : null;
     },
   ),
@@ -217,8 +242,24 @@ export const contractsMapping: Mapping<CheckContext> = {
       return { ok: false, why: "these rules do not describe a filtered question yet" };
     }
     const ordered = [...events].sort(newestFirst);
-    const page = firstN(ordered, pageSizeOf(ctx.url), { totalAt: "matched" });
-    const answer: Answer = { ctx, end, ordered, shown: page.shown, mine: myParties(ctx.trace) };
+    // **`total` and `matched` count the whole list, not what is left after the cursor.** The cursor moves
+    // where the page starts; it does not make the earlier rows stop existing, and a count that shrank with
+    // the cursor would tell the screen the list got smaller as it was read.
+    const after = cursorOf(ctx.url);
+    const remaining =
+      after === null ? ordered : ordered.filter((event) => newestFirst(event, after) > 0);
+    const page = nFrom(remaining, pageSizeOf(ctx.url), {
+      of: ordered.length,
+      totalAt: "matched",
+    });
+    const answer: Answer = {
+      ctx,
+      end,
+      ordered,
+      remaining,
+      shown: page.shown,
+      mine: myParties(ctx.trace),
+    };
     return { ok: true, pages: [page], body: buildObject(CONTRACTS_RESPONSE, answer) };
   },
 };
