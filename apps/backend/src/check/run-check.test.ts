@@ -18,6 +18,7 @@ import { fileURLToPath } from "node:url";
 // fail level ② wholesale — so this test sees **exactly what the server answers**.
 import { buildApp } from "../live/build-app.mjs";
 import { _clearSchemaCache } from "../router.ts";
+import { type Given, partiesFromRights } from "./given.ts";
 import { fakeTokenFor, parseTape, replaySend, tapeKey } from "./ledger-tape.ts";
 import { coverage, differences } from "./mapping.ts";
 import { MAPPINGS } from "./mappings/index.ts";
@@ -77,8 +78,16 @@ test("stands up the recorded ledger and passes every level (three people)", asyn
 
   // **"Now" is the instant it was recorded.** Using the real clock would let the expiry times the seed planted
   // slip into the past, and one day the answers would change on their own — the ledger frozen, the clock running.
+  // **What each person was given.** The parties come from the node's own rights answer on the tape — that is
+  // the fact itself, not our reading of it, and it is what /api/session is then compared against. Whether the
+  // seed put anything in front of them is declared: reading it off our own list would let an application that
+  // drops everything agree with itself.
+  const given = (name: string): Given => {
+    const rights = entries.find((e) => e.who === name && e.path.endsWith("/rights"))?.response;
+    return { ...partiesFromRights(rights), seesAnything: true };
+  };
   const report = await runCheck(
-    meta.users.map((name) => ({ name, ask: askAs(name) })),
+    meta.users.map((name) => ({ name, ask: askAs(name), given: given(name) })),
     nowFrom(recordedAt),
   );
   await app.close();

@@ -13,7 +13,32 @@
 // Writing the minimum only as "one or more" is deliberate — an exact count breaks on one line of seeding.
 // Where the requirement is a *property* rather than a count ("every package decodes"), it is written as a
 // property: that does not move with the seed, and it catches what a count cannot.
+import { canRead, type Given } from "./given.ts";
 import type { EndpointSpec } from "./run-check.ts";
+
+// ── What the answer depends on ───────────────────────────────────────────────────
+// **Most of these addresses have no one right answer — they have a right answer for this person.** A viewer
+// with no reading scope is answered 403 on everything that needs a party, and a person the seed gave nothing
+// is answered 200 with an empty list. Both are correct, and both used to be recorded as failures, which meant
+// the check could only ever run as a fully-provisioned user — the user whose answers reveal the least.
+//
+// The statements below say what each address owes each person. They are judged **both ways**: a 403 where
+// this person should have been served is a defect, and so is a 200 where they should have been refused.
+
+/**
+ * The router answers 403 no_party_rights to a viewer with no reading scope (router.ts:252, :287-289).
+ * `canRead`, not the party count, is the test: a super reader holds no party of their own and reads every one
+ * of them.
+ */
+const needsAParty = (given: Given) =>
+  canRead(given) ? { status: 200 } : { status: 403, reason: "no_party_rights" };
+
+/** There is no id to put in the address, because this person's list of them is legitimately empty. */
+const nothingToNameIt = (given: Given): string | null => {
+  if (!canRead(given)) return "holds no reading scope, so the list this id comes from is refused";
+  if (!given.seesAnything) return "the seed put nothing on the ledger this person can see";
+  return null;
+};
 
 // **The two interface ids of the Splice token standard (CIP-56).** This API takes "which standard should I look
 // through" from the caller — a design that keeps the standard out of the code (required for `/api/offers`,
@@ -46,19 +71,39 @@ export const ROUND_ONE: readonly EndpointSpec[] = [
     // An outcome of unavailable is still a 200 (by design). So only "it says view but has no parties" is a
     // failure — unavailable means the ledger granted no rights, and then every later round is meaningless,
     // which is worth saying separately.
-    filled: (body) => {
-      const outcome = rec(body).outcome;
-      if (outcome !== "view") {
-        return `outcome is not "view" (${String(outcome)}) — this person has no parties`;
+    // **The party list is compared with the node's own rights, not merely counted.** "One or more" would pass
+    // a response that dropped two of alice's three, and it would fail every viewer whose empty list is right.
+    filled: (body, given) => {
+      const b = rec(body);
+      if (b.outcome !== "view") return `outcome is not "view" (${String(b.outcome)})`;
+      const shown = arr(b.parties)
+        .map(rec)
+        .map((p) => String(p.party));
+      const missing = given.parties.filter((p) => !shown.includes(p));
+      const extra = shown.filter((p) => !given.parties.includes(p));
+      if (missing.length > 0 || extra.length > 0) {
+        return `parties do not match the rights — ${missing.length} missing, ${extra.length} not granted`;
       }
-      return len(body, "parties") >= 1 ? null : "parties is empty";
+      // The scope is the other half of the same fact: reading every party is not the same as holding many.
+      const wanted = given.readsEveryParty ? "instance-wide" : "own";
+      return b.scope === wanted ? null : `scope is ${String(b.scope)}, expected ${wanted}`;
     },
   },
   {
     template: "/api/contracts",
     url: () => "/api/contracts",
-    filled: (body) =>
-      len(body, "rows") >= 1 ? null : `rows is empty (total=${String(rec(body).total)})`,
+    status: needsAParty,
+    // **Empty is required of a person the seed gave nothing, not merely allowed.** A row arriving for them
+    // would be someone else's contract on their screen, which is the worst of the defects this check exists
+    // to catch — so the emptiness is stated, and a row breaks it.
+    filled: (body, given) => {
+      const total = rec(body).total;
+      if (given.seesAnything)
+        return len(body, "rows") >= 1 ? null : `rows is empty (total=${String(total)})`;
+      return len(body, "rows") === 0 && total === 0
+        ? null
+        : `the seed gave this person nothing, and yet ${len(body, "rows")} rows arrived (total=${String(total)})`;
+    },
   },
   {
     // Asked once more with a **small** pageSize. Asked with the default, the seed fits in a single page and
@@ -66,12 +111,28 @@ export const ROUND_ONE: readonly EndpointSpec[] = [
     template: "/api/contracts",
     url: () => "/api/contracts?pageSize=2",
     name: "/api/contracts?pageSize=2",
-    filled: (body) => (len(body, "rows") >= 1 ? null : "rows is empty"),
+    status: needsAParty,
+    filled: (body, given) =>
+      given.seesAnything
+        ? len(body, "rows") >= 1
+          ? null
+          : "rows is empty"
+        : len(body, "rows") === 0
+          ? null
+          : `the seed gave this person nothing, and yet ${len(body, "rows")} rows arrived`,
   },
   {
     template: "/api/updates",
     url: () => "/api/updates",
-    filled: (body) => (len(body, "rows") >= 1 ? null : "rows is empty"),
+    status: needsAParty,
+    filled: (body, given) =>
+      given.seesAnything
+        ? len(body, "rows") >= 1
+          ? null
+          : "rows is empty"
+        : len(body, "rows") === 0
+          ? null
+          : `the seed gave this person nothing, and yet ${len(body, "rows")} rows arrived`,
   },
   {
     template: "/api/timeline",
@@ -83,8 +144,14 @@ export const ROUND_ONE: readonly EndpointSpec[] = [
     url: () => "/api/timeline?from=1",
     // Two nested lists — groups, and the lifetimes inside them. An empty group array would leave every
     // lifetime field unchecked by ②, and a group with no lines would do the same one level down.
-    filled: (body) => {
+    status: needsAParty,
+    filled: (body, given) => {
       const groups = arr(rec(body).groups).map(rec);
+      if (!given.seesAnything) {
+        return groups.length === 0
+          ? null
+          : `the seed gave this person nothing, and yet ${groups.length} groups arrived`;
+      }
       if (groups.length === 0) return "groups is empty";
       return groups.every((g) => arr(g.lines).length >= 1) ? null : "a group carries no lifetimes";
     },
@@ -100,15 +167,27 @@ export const ROUND_ONE: readonly EndpointSpec[] = [
     // **"The card is present" is not enough.** Each card has `status: "ok" | "unavailable"` and both pass the
     // contract — a response with all three cards unavailable used to pass this check as green.
     // In that state not one of the numbers or lists inside the cards is checked.
-    filled: (body) => {
+    filled: (body, given) => {
       const cards = rec(rec(body).cards);
+      // This path is 200 for everyone; who the person is decides what is *inside*. With no reading scope the
+      // whole card block names the circumstance instead of carrying numbers (measured against the router).
+      if (!canRead(given)) {
+        return cards.status === "no_party_rights"
+          ? null
+          : `cards.status is ${String(cards.status)}, expected "no_party_rights"`;
+      }
       if (cards.status !== "ok") return `cards.status is not "ok" (${String(cards.status)})`;
+      // **The two token cards need a party of one's own, and a super reader has none.** Their answer is
+      // `no_own_parties`, which is not a failure — it is the true thing to say. Demanding "ok" of them here
+      // is what used to make a super reader's correct home read as broken.
+      const ownParties = given.parties.length > 0;
       for (const name of ["activeContracts", "pendingOffers", "tokens"]) {
         const card = cards[name];
         if (card === undefined) return `cards.${name} is absent`;
         const status = rec(card).status;
-        if (status !== "ok") {
-          return `cards.${name}.status is not "ok" (${String(status)} · ${String(rec(card).reason)})`;
+        const wanted = !ownParties && name !== "activeContracts" ? "unavailable" : "ok";
+        if (status !== wanted) {
+          return `cards.${name}.status is ${String(status)} (${String(rec(card).reason)}), expected "${wanted}"`;
         }
       }
       return null;
@@ -118,20 +197,34 @@ export const ROUND_ONE: readonly EndpointSpec[] = [
     template: "/api/holdings",
     url: () => `/api/holdings?holdingInterfaceId=${q(HOLDING)}`,
     name: "/api/holdings",
-    filled: (body) => {
+    status: needsAParty,
+    filled: (body, given) => {
       const b = rec(body);
       if (b.kind !== "available") return `kind is not "available" (${String(b.reason)})`;
-      return len(b, "view", "groups") >= 1 ? null : "view.groups is empty";
+      const groups = len(b, "view", "groups");
+      if (!given.seesAnything) {
+        return groups === 0
+          ? null
+          : `the seed gave this person nothing, and yet ${groups} groups arrived`;
+      }
+      return groups >= 1 ? null : "view.groups is empty";
     },
   },
   {
     template: "/api/preapprovals",
     url: (_h, now) => `/api/preapprovals?asOf=${q(now.iso)}`,
     name: "/api/preapprovals",
-    filled: (body) => {
+    status: needsAParty,
+    filled: (body, given) => {
       const b = rec(body);
       if (b.kind !== "available") return `kind is not "available" (${String(b.reason)})`;
-      return len(b, "view", "rows") >= 1 ? null : "view.rows is empty";
+      const rows = len(b, "view", "rows");
+      if (!given.seesAnything) {
+        return rows === 0
+          ? null
+          : `the seed gave this person nothing, and yet ${rows} rows arrived`;
+      }
+      return rows >= 1 ? null : "view.rows is empty";
     },
   },
   {
@@ -139,10 +232,17 @@ export const ROUND_ONE: readonly EndpointSpec[] = [
     // interfaceId is **required** here alone — without "an offer of which standard", the question does not stand.
     url: (_h, now) => `/api/offers?interfaceId=${q(TRANSFER_INSTRUCTION)}&asOf=${q(now.iso)}`,
     name: "/api/offers",
-    filled: (body) => {
+    status: needsAParty,
+    filled: (body, given) => {
       const b = rec(body);
       if (b.kind !== "available") return `kind is not "available" (${String(b.reason)})`;
-      return len(b, "view", "rows") >= 1 ? null : "view.rows is empty";
+      const rows = len(b, "view", "rows");
+      if (!given.seesAnything) {
+        return rows === 0
+          ? null
+          : `the seed gave this person nothing, and yet ${rows} rows arrived`;
+      }
+      return rows >= 1 ? null : "view.rows is empty";
     },
   },
   {
@@ -151,8 +251,16 @@ export const ROUND_ONE: readonly EndpointSpec[] = [
     // Having rows is not enough — when a definition cannot be read it becomes
     // `definition.status:"unavailable"` and the field and choice schemas beneath it go unchecked. Written as
     // "every one is read" (a property, not a count) — otherwise a run with every definition unavailable passes as green.
-    filled: (body) => {
+    status: needsAParty,
+    // The rows come from **my** active contracts, so a person the seed gave nothing has none of them —
+    // unlike the package catalog below, whose rows are every installed package.
+    filled: (body, given) => {
       const rows = arr(rec(body).rows).map(rec);
+      if (!given.seesAnything) {
+        return rows.length === 0
+          ? null
+          : `the seed gave this person nothing, and yet ${rows.length} templates arrived`;
+      }
       if (rows.length === 0) return "rows is empty";
       const unreadable = rows.filter((r) => rec(r.definition).status !== "ok");
       if (unreadable.length > 0) {
@@ -178,6 +286,10 @@ export const ROUND_ONE: readonly EndpointSpec[] = [
     // Written as a **property**, not a count ("every one is read"). It does not move with the seed, and all 38
     // packages decoded on the real node too. If a package with an LF version we cannot read ever arrives,
     // this is what says so.
+    status: needsAParty,
+    // **No `seesAnything` branch here on purpose.** These rows are every package installed on the
+    // participant (GET /v2/packages), not the packages my contracts use, so they are there for a person the
+    // seed gave nothing too. Only `inMyContracts` goes empty for them.
     filled: (body) => {
       const rows = arr(rec(body).rows).map(rec);
       if (rows.length === 0) return "rows is empty";
@@ -228,6 +340,8 @@ export const ROUND_TWO: readonly EndpointSpec[] = [
     template: "/api/contracts/{contractId}",
     url: (h) => (h.contractId ? `/api/contracts/${encodeURIComponent(h.contractId)}` : null),
     need: "contractId (rows[0] of /api/contracts)",
+    status: needsAParty,
+    unaskable: nothingToNameIt,
     // `schema.status` is checked too — unavailable also passes the contract, so with only that arriving, not
     // one of the field, choice or typedPayload schemas is checked.
     filled: (body) => {
@@ -242,6 +356,8 @@ export const ROUND_TWO: readonly EndpointSpec[] = [
     template: "/api/updates/{updateId}",
     url: (h) => (h.updateId ? `/api/updates/${encodeURIComponent(h.updateId)}` : null),
     need: "updateId (rows[0] of /api/updates)",
+    status: needsAParty,
+    unaskable: nothingToNameIt,
     // Only the transaction branch has events. If another branch arrived (a reassignment, say), say so.
     filled: (body) => {
       const b = rec(body);
@@ -253,6 +369,8 @@ export const ROUND_TWO: readonly EndpointSpec[] = [
     template: "/api/updates/by-offset/{offset}",
     url: (h) => (h.offset === null ? null : `/api/updates/by-offset/${h.offset}`),
     need: "offset (rows[0].offset of /api/updates)",
+    status: needsAParty,
+    unaskable: nothingToNameIt,
     filled: (body) => {
       const b = rec(body);
       if (b.kind !== "transaction") return `kind is not "transaction" (${String(b.kind)})`;
@@ -266,6 +384,10 @@ export const ROUND_TWO: readonly EndpointSpec[] = [
     // version), and picking one of those would bring the `status:"unavailable"` branch and leave the
     // blueprint-side schema unchecked.
     need: 'packageId (the first row of /api/catalog/packages with schemaStatus === "ok")',
+    // **Not gated on the seed.** The catalog this id comes from is every installed package, so anyone with a
+    // reading scope can name one — including a person whose own contract list is empty.
+    unaskable: (given) =>
+      canRead(given) ? null : "holds no reading scope, so the package catalog is refused",
     filled: (body) => {
       const b = rec(body);
       if (b.status !== "ok") return `status is not "ok" (${String(b.reason)})`;
@@ -276,8 +398,21 @@ export const ROUND_TWO: readonly EndpointSpec[] = [
     template: "/api/party/{partyId}",
     url: (h) => (h.partyId ? `/api/party/${encodeURIComponent(h.partyId)}` : null),
     need: "partyId (parties[0].party of /api/session)",
-    filled: (body) => {
+    status: needsAParty,
+    // **A super reader has no party of their own to name here.** Reading every party is not holding one, and
+    // the session's party list is where this id comes from.
+    unaskable: (given) =>
+      given.parties.length > 0 ? null : "holds no party of their own, so the session names none",
+    // "found" means the party appears in at least one of *my* active contracts
+    // (core/search/search-party-in-active-contracts.ts). With no contract of my own, my own party is
+    // out_of_scope — that is the honest answer, not a failure.
+    filled: (body, given) => {
       const b = rec(body);
+      if (!given.seesAnything) {
+        return b.status === "out_of_scope"
+          ? null
+          : `status is ${String(b.status)}, expected "out_of_scope" for a person with no contract`;
+      }
       if (b.status !== "found") return `status is not "found" (${String(b.status)})`;
       return len(b, "contractIds") >= 1 ? null : "contractIds is empty";
     },
@@ -289,6 +424,8 @@ export const ROUND_TWO: readonly EndpointSpec[] = [
     template: "/api/search",
     url: (h) => (h.contractId ? `/api/search?q=${encodeURIComponent(h.contractId)}` : null),
     need: "contractId (rows[0] of /api/contracts)",
+    status: needsAParty,
+    unaskable: nothingToNameIt,
     filled: (body) => {
       const b = rec(body);
       if (b.kind !== "contract_id") return `kind is not "contract_id" (${String(b.kind)})`;

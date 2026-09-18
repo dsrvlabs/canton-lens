@@ -14,6 +14,7 @@ import type { ValidateFunction } from "ajv";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import { openApiDocument } from "../openapi.ts";
 import { type Harvest, harvest, ROUND_ONE, ROUND_TWO } from "./expectations.ts";
+import type { Given } from "./given.ts";
 import { checkPages, differences } from "./mapping.ts";
 import { MAPPINGS } from "./mappings/index.ts";
 import type { NodeCall } from "./trace.ts";
@@ -27,7 +28,10 @@ export type Ask = (
   url: string,
 ) => Promise<{ status: number; body: unknown; ledger: readonly NodeCall[] }>;
 
-export type CheckUser = { name: string; ask: Ask };
+// **Who is asking, and what they were given.** The second half is what lets an answer be judged as right *for
+// this person*: a viewer holding no party is answered 403 everywhere that needs one, and that is the correct
+// answer, not a failure. See check/given.ts for why it is declared rather than worked out.
+export type CheckUser = { name: string; ask: Ask; given: Given };
 
 // **This check does not read a clock either.** The API requires the "now" for judging expiry as a query
 // parameter (router.ts: "The 'now' for judging expiry is measured by the caller and passed in"). The real-node
@@ -40,23 +44,45 @@ export const nowFrom = (at: Date): Now => ({ iso: at.toISOString(), ms: at.getTi
 export type EndpointSpec = {
   /** The openapi path template — the 200 schema is found by it. */
   template: string;
-  /** The address actually asked. Round two returns null when round one yielded nothing, and that is a failure. */
+  /** The address actually asked. Round two returns null when round one yielded nothing. */
   url: (harvested: Harvest, now: Now) => string | null;
   /** The name for the report. Distinguishes asking the same template twice (with pageSize, say). */
   name?: string;
   /** Returning null passes; returning a sentence makes that sentence the failure reason. */
-  filled: (body: unknown) => string | null;
+  filled: (body: unknown, given: Given) => string | null;
   /** What was missing, for when round two could not harvest its value. */
   need?: string;
+  /**
+   * What this address must answer **this** person. Absent means 200. A viewer with no reading scope is
+   * answered 403 no_party_rights on every party-scoped address, and that is the right answer — while for
+   * anyone else the same 403 is a defect. It is judged both ways: the stated status is required, not merely
+   * tolerated.
+   */
+  status?: (given: Given) => { status: number; reason?: string };
+  /**
+   * Why this address cannot be put to this person at all — null when it can. A round-two address is built
+   * from a value harvested in round one, and when that value legitimately does not exist (nobody has no
+   * contracts to name, a super reader has no party of their own) there is nothing to ask.
+   *
+   * **Both directions are judged.** A reason given while an address could still be built is as much a defect
+   * as an address that could not be built without one: the first hides a question we stopped asking, the
+   * second hides one we never could.
+   */
+  unaskable?: (given: Given) => string | null;
 };
 
 export type Level = "responds" | "schema" | "filled" | "mapping";
 export type Finding = { user: string; url: string; level: Level; message: string };
 
+/** An address that was rightly not put to someone, and why. Counted and printed, never silent. */
+export type NotAsked = { user: string; url: string; why: string };
+
 export type CheckReport = {
   users: string[];
   asked: number;
   findings: Finding[];
+  /** The zeros that were legitimate. A zero with no reason is a finding instead. */
+  notAsked: NotAsked[];
   ok: boolean;
 };
 
@@ -149,6 +175,7 @@ export function describeCoverage(): {
 export async function runCheck(users: readonly CheckUser[], now: Now): Promise<CheckReport> {
   const validators = schemaValidators();
   const findings: Finding[] = [];
+  const notAsked: NotAsked[] = [];
   let asked = 0;
 
   // **The coverage guard — it stops a new operation from arriving unchecked.** Without it, an operation could
@@ -173,13 +200,31 @@ export async function runCheck(users: readonly CheckUser[], now: Now): Promise<C
       for (const spec of specs) {
         const url = spec.url(harvested, now);
         const label = spec.name ?? spec.template;
+        const unaskable = spec.unaskable?.(user.given) ?? null;
         if (url === null) {
-          // No address could be built — which means round one was empty. Skipping would make green a lie.
+          if (unaskable !== null) {
+            // A zero with a stated reason. It is written down rather than skipped: an address nobody asks is
+            // an address nobody checks, and the only thing keeping that honest is that it is visible.
+            notAsked.push({ user: user.name, url: label, why: unaskable });
+            continue;
+          }
+          // No address could be built and nothing says one could not be. Skipping would make green a lie.
           findings.push({
             user: user.name,
             url: label,
             level: "filled",
             message: `could not be asked — ${spec.need ?? "no value could be harvested from the earlier responses"}`,
+          });
+          continue;
+        }
+        if (unaskable !== null) {
+          // The other direction. Something said this person could not be asked and an address was built all
+          // the same — so either the reason is wrong or the value it said was missing is not.
+          findings.push({
+            user: user.name,
+            url,
+            level: "filled",
+            message: `said to be unaskable (${unaskable}) and yet an address was built`,
           });
           continue;
         }
@@ -199,17 +244,23 @@ export async function runCheck(users: readonly CheckUser[], now: Now): Promise<C
           continue;
         }
 
-        // ① It answers. Asked with a token, so it must be 200 — anything else records the circumstance.
-        if (status !== 200) {
-          const reason = (body as { reason?: unknown } | null)?.reason;
+        // ① It answers what it should answer this person. Usually 200; where the person holds no reading
+        // scope the right answer is a refusal, and the refusal is **required**, not merely tolerated — a 200
+        // where a 403 belongs is the more serious defect of the two.
+        const want = spec.status?.(user.given) ?? { status: 200 };
+        const reason = (body as { reason?: unknown } | null)?.reason;
+        const said = `${status}${typeof reason === "string" ? ` ${reason}` : ""}`;
+        if (status !== want.status || (want.reason !== undefined && reason !== want.reason)) {
           findings.push({
             user: user.name,
             url,
             level: "responds",
-            message: `${status}${typeof reason === "string" ? ` ${reason}` : ""}`,
+            message: `expected ${want.status}${want.reason === undefined ? "" : ` ${want.reason}`}, got ${said}`,
           });
           continue;
         }
+        // A refusal that was the right answer is judged and done — there is no 200 schema to compare it with.
+        if (want.status !== 200) continue;
         bodies.set(url, body);
 
         // ② It matches the contract.
@@ -226,7 +277,7 @@ export async function runCheck(users: readonly CheckUser[], now: Now): Promise<C
         }
 
         // ③ It has content. Checked even when ② failed — with both at once, looking at one misdiagnoses.
-        const empty = spec.filled(body);
+        const empty = spec.filled(body, user.given);
         if (empty !== null) {
           findings.push({ user: user.name, url, level: "filled", message: empty });
         }
@@ -271,6 +322,7 @@ export async function runCheck(users: readonly CheckUser[], now: Now): Promise<C
     users: users.map((u) => u.name),
     asked,
     findings,
+    notAsked,
     ok: findings.length === 0,
   };
 }
@@ -291,6 +343,7 @@ export function formatReport(report: CheckReport): string {
     const mark = { responds: "①", schema: "②", filled: "③", mapping: "④" }[f.level];
     lines.push(`  ${mark} ${f.user} ${f.url} — ${f.message}`);
   }
+  for (const n of report.notAsked) lines.push(`  · ${n.user} ${n.url} — not asked: ${n.why}`);
   lines.push(report.ok ? "Passed — every level." : "Failed.");
   return lines.join("\n");
 }
