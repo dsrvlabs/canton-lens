@@ -129,10 +129,13 @@ test("a viewer with no reading scope is served, refused and left unasked in the 
     return { status: 200, body, ledger: [] };
   };
 
-  const report = await runCheck([{ name: "nobody", ask: refuseParties, given: NOTHING }], {
-    iso: "2026-09-14T11:28:07.289Z",
-    ms: Date.parse("2026-09-14T11:28:07.289Z"),
-  });
+  const report = await runCheck(
+    [{ name: "nobody", ask: refuseParties, given: NOTHING, tokenPayload: null }],
+    {
+      iso: "2026-09-14T11:28:07.289Z",
+      ms: Date.parse("2026-09-14T11:28:07.289Z"),
+    },
+  );
 
   // Every refusal was the answer this person was owed, and the three open addresses were served.
   assert.deepEqual(
@@ -171,6 +174,7 @@ test("describing a person wrongly turns the check red rather than quietly green"
     [
       {
         name: "x",
+        tokenPayload: null,
         ask: served,
         given: NOTHING,
       },

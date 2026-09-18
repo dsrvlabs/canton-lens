@@ -84,7 +84,15 @@ test("stands up the recorded ledger and passes every level (twelve people)", asy
   // **"Now" is the instant it was recorded.** Using the real clock would let the expiry times the seed planted
   // slip into the past, and one day the answers would change on their own — the ledger frozen, the clock running.
   const report = await runCheck(
-    meta.people.map((person) => ({ name: person.name, ask: askAs(person.name), given: person })),
+    // The tape's stand-in tokens are not JWTs — there is nothing to decode and nothing to echo, so the
+    // session answer's token claims are null for everyone here. A live run against a participant passes the
+    // real payload and the same rule then has something to compare.
+    meta.people.map((person) => ({
+      name: person.name,
+      ask: askAs(person.name),
+      given: person,
+      tokenPayload: null,
+    })),
     nowFrom(recordedAt),
   );
   await app.close();
@@ -309,6 +317,79 @@ test("every mapping describes every slot the contract lets its answer reach", ()
     );
     assert.deepEqual(problems, [], `${address}\n  ${problems.join("\n  ")}`);
   }
+});
+
+test("a union of branches is described branch by branch, or it is reported", () => {
+  // **A union is where a mapping can look complete and describe one shape of four.** `ContractKeyView` is
+  // two branches told apart by `kind`; these cases pin down that the form notices each way of getting it
+  // wrong. Named against the real contract, so a change to that schema arrives here.
+  const rule = { says: "x", origin: "app" as const, from: () => null };
+  const complete = {
+    root: "ContractKeyView",
+    slots: {
+      ContractKeyView: {
+        by: "kind",
+        of: [
+          { when: ["none"], slots: { kind: rule } },
+          { when: ["present"], slots: { kind: rule, value: rule } },
+        ],
+      },
+    },
+  };
+  assert.deepEqual(coverage(complete), []);
+
+  const oneBranchMissing = {
+    root: "ContractKeyView",
+    slots: { ContractKeyView: { by: "kind", of: [{ when: ["none"], slots: { kind: rule } }] } },
+  };
+  assert.deepEqual(
+    coverage(oneBranchMissing).map((p) => p.message),
+    ["no table for kind present"],
+  );
+
+  const slotMissing = {
+    root: "ContractKeyView",
+    slots: {
+      ContractKeyView: {
+        by: "kind",
+        of: [
+          { when: ["none"], slots: { kind: rule } },
+          { when: ["present"], slots: { kind: rule } },
+        ],
+      },
+    },
+  };
+  assert.deepEqual(
+    coverage(slotMissing).map((p) => `${p.schema}.${p.slot} — ${p.message}`),
+    ["ContractKeyView(present).value — no rule"],
+  );
+
+  // Describing a union as if it were one shape is its own mistake: every branch would go unchecked.
+  const asOneShape = {
+    root: "ContractKeyView",
+    slots: { ContractKeyView: { kind: rule, value: rule } },
+  };
+  assert.equal(coverage(asOneShape).length, 1);
+  assert.match(coverage(asOneShape)[0]?.message ?? "", /described as one shape/);
+
+  // And a branch nobody declares must not sit there unnoticed either.
+  const extraBranch = {
+    root: "ContractKeyView",
+    slots: {
+      ContractKeyView: {
+        by: "kind",
+        of: [
+          { when: ["none"], slots: { kind: rule } },
+          { when: ["present"], slots: { kind: rule, value: rule } },
+          { when: ["invented"], slots: { kind: rule } },
+        ],
+      },
+    },
+  };
+  assert.deepEqual(
+    coverage(extraBranch).map((p) => p.message),
+    ["a branch for kind invented the contract does not declare"],
+  );
 });
 
 test("the comparison tells apart the things that look the same", () => {

@@ -32,7 +32,16 @@ export type Ask = (
 // **Who is asking, and what they were given.** The second half is what lets an answer be judged as right *for
 // this person*: a viewer holding no party is answered 403 everywhere that needs one, and that is the correct
 // answer, not a failure. See check/given.ts for why it is declared rather than worked out.
-export type CheckUser = { name: string; ask: Ask; given: Given };
+export type CheckUser = {
+  name: string;
+  ask: Ask;
+  given: Given;
+  /**
+   * The payload of this person's ledger token, already decoded by whoever holds the token — never the token
+   * itself. `null` when it is not a JWT. See `CheckContext.callerToken`.
+   */
+  tokenPayload: Record<string, unknown> | null;
+};
 
 // **This check does not read a clock either.** The API requires the "now" for judging expiry as a query
 // parameter (router.ts: "The 'now' for judging expiry is measured by the caller and passed in"). The real-node
@@ -322,7 +331,13 @@ export async function runCheck(users: readonly CheckUser[], now: Now): Promise<C
         // rules is left at the first three levels rather than compared against nothing.
         const mapping = MAPPINGS[label];
         if (mapping !== undefined) {
-          const expectation = mapping.expected({ user: user.name, url, trace: ledger, now });
+          const expectation = mapping.expected({
+            user: user.name,
+            url,
+            trace: ledger,
+            now,
+            callerToken: user.tokenPayload,
+          });
           if (!expectation.ok) {
             findings.push({
               user: user.name,

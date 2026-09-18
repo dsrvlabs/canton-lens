@@ -6,6 +6,7 @@
 // Applying a comparator to an address with no rules would compare against nothing and call it green.
 import type { CheckContext, Mapping } from "../mapping.ts";
 import { contractsMapping } from "./contracts.ts";
+import { sessionMapping } from "./session.ts";
 import { timelineMapping } from "./timeline.ts";
 import { updatesMapping } from "./updates.ts";
 
@@ -15,6 +16,7 @@ export const MAPPINGS: Record<string, Mapping<CheckContext>> = {
   // list and the cursor that the default page size never reaches.
   "/api/contracts": contractsMapping,
   "/api/contracts?pageSize=2": contractsMapping,
+  "/api/session": sessionMapping,
   "/api/updates": updatesMapping,
   "/api/timeline": timelineMapping,
 };
