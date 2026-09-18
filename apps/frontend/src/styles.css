@@ -538,8 +538,10 @@
 }
 .tx-rail {
   position: absolute;
-  top: 0;
-  bottom: 0;
+  /* A pixel past each edge, so a rail runs under the row's own border and meets the one below it. Stopping
+     at the cell left a hairline gap at every row, and a line that breaks nine times is nine marks. */
+  top: -1px;
+  bottom: -1px;
   width: 12px;
   border-color: var(--clds-color-rule);
   pointer-events: none;
@@ -555,7 +557,7 @@
 /* The turn into this row: down from the top, then across. Rounded, so the corner reads as one stroke. */
 .tx-rail--elbow {
   bottom: auto;
-  height: 50%;
+  height: calc(50% + 1px);
   border-left: 1px solid var(--clds-color-rule);
   border-bottom: 1px solid var(--clds-color-rule);
   border-bottom-left-radius: 6px;
@@ -573,6 +575,11 @@
 .tx-rail--down {
   top: 50%;
   border-left: 1px solid var(--clds-color-rule);
+}
+/* The payload row of an open event is part of the same run, so the lines cross it too. */
+.tx-args .tx-rail {
+  top: -1px;
+  bottom: -1px;
 }
 
 /* Out of room, the kind breaks inside itself ("exercised ·" / "consuming") rather than pushing the caret off
