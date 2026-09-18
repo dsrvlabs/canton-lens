@@ -18,45 +18,7 @@ import {
   node,
   type Rule,
 } from "../mapping.ts";
-import { contractsAskedEverything } from "../own-set.ts";
-import type { NodeCall } from "../trace.ts";
-
-const rec = (value: unknown): Record<string, unknown> =>
-  value !== null && typeof value === "object" ? (value as Record<string, unknown>) : {};
-const arr = (value: unknown): unknown[] => (Array.isArray(value) ? value : []);
-const str = (value: unknown): string | null => (typeof value === "string" ? value : null);
-
-// ── Reading the trace ────────────────────────────────────────────────────────────
-
-const answerOf = (trace: readonly NodeCall[], method: string, path: string): unknown =>
-  trace.find((call) => call.method === method && call.path === path)?.answer;
-
-// **Only the pages asked with a wildcard filter.** This one API call also reaches the node for the ledger end
-// and the user's rights, and other API calls ask the same active-contracts path with an *interface* filter.
-// Picking by "it is an active-contracts call" would fold a narrower question's answer into this one's.
-// The judgment is the answer key's (own-set.ts) — "was this asked without narrowing" is one question and it
-// has one definition.
-const wildcardAcsPages = (trace: readonly NodeCall[]): NodeCall[] =>
-  trace.filter(
-    (call) =>
-      call.method === "POST" &&
-      call.path.startsWith("/v2/state/active-contracts") &&
-      contractsAskedEverything(call.body),
-  );
-
-/** The parties that are mine, in the order the rights response lists them first. */
-const myParties = (trace: readonly NodeCall[]): string[] => {
-  const rights = trace.find((call) => call.path.endsWith("/rights"))?.answer;
-  const order: string[] = [];
-  for (const item of arr(rec(rights).rights)) {
-    const kind = rec(rec(item).kind);
-    for (const name of ["CanReadAs", "CanActAs"] as const) {
-      const party = str(rec(rec(kind[name]).value).party);
-      if (party !== null && !order.includes(party)) order.push(party);
-    }
-  }
-  return order;
-};
+import { answerOf, arr, fqn, myParties, rec, str, wildcardAcsPages } from "./read-trace.ts";
 
 // ── The node object a row is made from ───────────────────────────────────────────
 // One active contract's created event. The list is sorted and cut *before* the rules run, so a rule only ever
@@ -65,12 +27,6 @@ type Event = Record<string, unknown>;
 
 const parties = (event: Event, key: "signatories" | "observers"): string[] =>
   arr(event[key]).filter((p): p is string => typeof p === "string");
-
-/** The three pieces of the template identifier: `<packageId>:<Module>:<Entity>`. */
-const fqn = (event: Event): [string, string, string] | null => {
-  const parts = (str(event.templateId) ?? "").split(":");
-  return parts.length === 3 ? [parts[0] ?? "", parts[1] ?? "", parts[2] ?? ""] : null;
-};
 
 // Newest first: offset descending, then createdAt descending, then contractId ascending. The last is not a
 // preference — with two contracts created at one offset and instant, without it the order is whatever the node
@@ -107,18 +63,18 @@ const CONTRACT_LIST_ROW: Record<string, Rule<{ event: Event; mine: string[] }>> 
   contractId: node("event.contractId"),
   package: app(
     "the first of the three colon-separated parts of the node's templateId",
-    ({ event }) => fqn(event)?.[0],
+    ({ event }) => fqn(event.templateId)?.[0],
   ),
   packageName: app("the node's packageName, or null when the node sent none", ({ event }) =>
     str(event.packageName),
   ),
   module: app(
     "the second of the three parts of the node's templateId",
-    ({ event }) => fqn(event)?.[1],
+    ({ event }) => fqn(event.templateId)?.[1],
   ),
   entity: app(
     "the third of the three parts of the node's templateId",
-    ({ event }) => fqn(event)?.[2],
+    ({ event }) => fqn(event.templateId)?.[2],
   ),
   counterpartyParty: app(
     "the node's signatories then its observers, each kept at its first appearance, with my own parties removed",
