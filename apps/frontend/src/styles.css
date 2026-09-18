@@ -722,11 +722,6 @@
   background: var(--clds-color-row-hover);
 }
 
-/* Everything under an event — the typed fields, a value written out inline, a folded payload — keeps the
-   same gap from the block above it, whichever kind either of them is. */
-.tx-args > td > * + * {
-  margin-top: var(--clds-space-2);
-}
 /* The informee lens — the parties named on this update, and how many of its events name each. Setting it
    dims the rest rather than removing them: what is dimmed is still one of the transaction's events, and
    taking it away would take the tree above it too. */
