@@ -340,6 +340,8 @@ test("the slots no mapping judges are these, and nobody adds one quietly", () =>
       }
     }
   }
+  // Every one of them is a value the package bytes decode to. There is no second reason on this list, and a
+  // new entry with a different reason is the thing this test exists to make somebody look at.
   assert.deepEqual(declined.sort(), [
     "/api/catalog/packages PackageRow.interfaces",
     "/api/catalog/packages PackageRow.lfVersion",
@@ -347,6 +349,23 @@ test("the slots no mapping judges are these, and nobody adds one quietly", () =>
     "/api/catalog/packages PackageRow.schemaStatus",
     "/api/catalog/packages PackageRow.templates",
     "/api/catalog/packages PackageRow.version",
+    "/api/catalog/templates ChoiceLite.argFields",
+    "/api/catalog/templates ChoiceLite.argType",
+    "/api/catalog/templates ChoiceLite.consuming",
+    "/api/catalog/templates ChoiceLite.name",
+    "/api/catalog/templates ChoiceLite.returnType",
+    "/api/catalog/templates SchemaFieldLite.name",
+    "/api/catalog/templates SchemaFieldLite.type",
+    "/api/catalog/templates SchemaRef.module",
+    "/api/catalog/templates SchemaRef.name",
+    "/api/catalog/templates SchemaRef.packageId",
+    "/api/catalog/templates TemplateDefinition.choices",
+    "/api/catalog/templates TemplateDefinition.fields",
+    "/api/catalog/templates TemplateDefinition.implements",
+    "/api/catalog/templates TemplateDefinition.key",
+    "/api/catalog/templates TemplateDefinition.packageVersion",
+    "/api/catalog/templates TemplateDefinition.reason",
+    "/api/catalog/templates TemplateRow.definition",
   ]);
 });
 

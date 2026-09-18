@@ -7,12 +7,14 @@
 import type { CheckContext, Mapping } from "../mapping.ts";
 import { contractsMapping } from "./contracts.ts";
 import { holdingsMapping } from "./holdings.ts";
+import { homeMapping } from "./home.ts";
 import { nodeMapping } from "./node.ts";
 import { offersMapping } from "./offers.ts";
 import { packagesCatalogMapping } from "./packages-catalog.ts";
 import { partyMapping } from "./party.ts";
 import { preapprovalsMapping } from "./preapprovals.ts";
 import { sessionMapping } from "./session.ts";
+import { templatesCatalogMapping } from "./templates-catalog.ts";
 import { timelineMapping } from "./timeline.ts";
 import { updatesMapping } from "./updates.ts";
 
@@ -23,8 +25,10 @@ export const MAPPINGS: Record<string, Mapping<CheckContext>> = {
   "/api/contracts": contractsMapping,
   "/api/contracts?pageSize=2": contractsMapping,
   "/api/catalog/packages": packagesCatalogMapping,
+  "/api/catalog/templates": templatesCatalogMapping,
   "/api/offers": offersMapping,
   "/api/holdings": holdingsMapping,
+  "/api/home": homeMapping,
   "/api/node": nodeMapping,
   "/api/party/{partyId}": partyMapping,
   "/api/preapprovals": preapprovalsMapping,

@@ -41,13 +41,13 @@ const DEFAULT_LIMIT = 25;
  * only witnessParties — and the envelope copies whichever side is there into one `parties`. The name does
  * not change with the meaning, so the difference is written out in the rules below rather than implied.
  */
-type Event = {
+export type UpdateEvent = {
   created: Record<string, unknown> | null;
   archived: Record<string, unknown> | null;
   source: Record<string, unknown>;
 };
 
-const RECENT_UPDATE_EVENT_ROW: Record<string, Rule<Event>> = {
+export const RECENT_UPDATE_EVENT_ROW: Record<string, Rule<UpdateEvent>> = {
   kind: app(
     "created when the node's event is a CreatedEvent, archived when it is an ArchivedEvent",
     (e) => (e.created !== null ? "created" : "archived"),
@@ -81,9 +81,9 @@ const RECENT_UPDATE_EVENT_ROW: Record<string, Rule<Event>> = {
 // ── One update ───────────────────────────────────────────────────────────────────
 
 /** A node transaction and the events of it that survived. */
-type Update = { value: Record<string, unknown>; events: Event[] };
+export type Update = { value: Record<string, unknown>; events: UpdateEvent[] };
 
-const RECENT_UPDATE_ROW: Record<string, Rule<Update>> = {
+export const RECENT_UPDATE_ROW: Record<string, Rule<Update>> = {
   updateId: node("value.updateId"),
   offset: node("value.offset"),
   effectiveAt: node("value.effectiveAt"),
@@ -163,6 +163,44 @@ const emptyLedger = (ctx: CheckContext): unknown => ({
   readAt: ctx.now.iso,
 });
 
+/**
+ * The transactions of a window, read out of the node's pages. Shared with the home mapping, which reads the
+ * same window for its list and its sparkline — the reading is plumbing; the rules above are not.
+ */
+export function readUpdates(
+  pages: readonly { answer: unknown }[],
+): { updates: Update[] } | { why: string } {
+  const updates: Update[] = [];
+  for (const page of pages) {
+    for (const item of arr(page.answer)) {
+      // Anything that is not a transaction — a reassignment, a checkpoint, a topology change — is passed
+      // over. It is not an error and it is not a row.
+      const value = rec(rec(rec(rec(item).update).Transaction).value);
+      if (Object.keys(value).length === 0) continue;
+      const events: UpdateEvent[] = [];
+      for (const rawEvent of arr(value.events)) {
+        const created = rec(rawEvent).CreatedEvent;
+        const archived = rec(rawEvent).ArchivedEvent;
+        const source = created ?? archived;
+        if (source === undefined) {
+          // An exercised event, say. The envelope refuses the whole call rather than dropping it, so there
+          // is no expected body to compare — the answer would be a 502, a different judgment from this one.
+          return { why: "an update event is neither a CreatedEvent nor an ArchivedEvent" };
+        }
+        events.push({
+          created: created === undefined ? null : rec(created),
+          archived: archived === undefined ? null : rec(archived),
+          source: rec(source),
+        });
+      }
+      // **An update with no event I can see is not a row.** An empty row has nothing to say.
+      if (events.length === 0) continue;
+      updates.push({ value, events });
+    }
+  }
+  return { updates };
+}
+
 export const updatesMapping: Mapping<CheckContext> = {
   root: "UpdatesResponse",
   slots: {
@@ -186,39 +224,9 @@ export const updatesMapping: Mapping<CheckContext> = {
     }
     const pages = wildcardUpdatePages(ctx.trace);
     if (pages.length === 0) return { ok: false, why: "the trace holds no unnarrowed updates call" };
-
-    const updates: Update[] = [];
-    for (const page of pages) {
-      for (const item of arr(page.answer)) {
-        // Anything that is not a transaction — a reassignment, a checkpoint, a topology change — is passed
-        // over. It is not an error and it is not a row.
-        const value = rec(rec(rec(rec(item).update).Transaction).value);
-        if (Object.keys(value).length === 0) continue;
-        const events: Event[] = [];
-        for (const rawEvent of arr(value.events)) {
-          const created = rec(rawEvent).CreatedEvent;
-          const archived = rec(rawEvent).ArchivedEvent;
-          const source = created ?? archived;
-          if (source === undefined) {
-            // An exercised event, say. The envelope refuses the whole call rather than dropping it, so
-            // there is no expected body to compare — the answer would be a 502 and that is a different
-            // judgment from this one.
-            return {
-              ok: false,
-              why: "an update event is neither a CreatedEvent nor an ArchivedEvent",
-            };
-          }
-          events.push({
-            created: created === undefined ? null : rec(created),
-            archived: archived === undefined ? null : rec(archived),
-            source: rec(source),
-          });
-        }
-        // **An update with no event I can see is not a row.** An empty row has nothing to say.
-        if (events.length === 0) continue;
-        updates.push({ value, events });
-      }
-    }
+    const read = readUpdates(pages);
+    if ("why" in read) return { ok: false, why: read.why };
+    const updates = read.updates;
     // Newest first, by offset alone — an offset is a total order within one participant, so no two updates
     // share one and no tiebreak is needed.
     const ordered = [...updates].sort(
