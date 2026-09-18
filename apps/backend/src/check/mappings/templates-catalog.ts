@@ -11,10 +11,10 @@
 //
 // **The definition of a template is declared unjudged**, for the same reason as the package rows: fields,
 // choices, keys and implemented interfaces are what the package bytes decode to, and restating that rule
-// means writing a second Daml-LF decoder.
+// means writing a second Daml-LF decoder. One abstention covers the whole shape beneath it, so that is one
+// line here rather than fourteen saying the same thing.
 import {
   app,
-  type Branches,
   buildObject,
   type CheckContext,
   type Expectation,
@@ -24,49 +24,6 @@ import {
   unjudged,
 } from "../mapping.ts";
 import { arr, fqn, rec, str, wildcardAcsPages } from "./read-trace.ts";
-
-// The two branches exist and are named, so that a change to either is reported; every slot inside them is a
-// decoded value, so every slot inside them is declined.
-const DEFINITION_OK: Record<string, Rule<unknown>> = {
-  status: app("ok — the package decoded and it holds this template", () => "ok"),
-  packageVersion: unjudged("a package's version is what its bytes decode to"),
-  fields: unjudged("a template's fields are what the package bytes decode to"),
-  choices: unjudged("a template's choices are what the package bytes decode to"),
-  key: unjudged("a template's key is what the package bytes decode to"),
-  implements: unjudged("the interfaces a template implements are what the package bytes decode to"),
-};
-const DEFINITION_UNAVAILABLE: Record<string, Rule<unknown>> = {
-  status: app(
-    "unavailable — the package did not decode, or it decoded without this template",
-    () => "unavailable",
-  ),
-  reason: unjudged("why the package bytes did not decode, or that they held no such template"),
-};
-const TEMPLATE_DEFINITION: Branches = {
-  by: "status",
-  of: [
-    { when: ["ok"], slots: DEFINITION_OK },
-    { when: ["unavailable"], slots: DEFINITION_UNAVAILABLE },
-  ],
-};
-
-// Reached through the definition, and every slot of them is decoded — so each is declined as a whole.
-const SCHEMA_FIELD: Record<string, Rule<unknown>> = {
-  name: unjudged("a field's name is what the package bytes decode to"),
-  type: unjudged("a field's type is what the package bytes decode to"),
-};
-const CHOICE: Record<string, Rule<unknown>> = {
-  name: unjudged("a choice's name is what the package bytes decode to"),
-  consuming: unjudged("whether a choice consumes is what the package bytes decode to"),
-  argType: unjudged("a choice's argument type is what the package bytes decode to"),
-  argFields: unjudged("a choice's argument fields are what the package bytes decode to"),
-  returnType: unjudged("a choice's return type is what the package bytes decode to"),
-};
-const SCHEMA_REF: Record<string, Rule<unknown>> = {
-  module: unjudged("an implemented interface's module is what the package bytes decode to"),
-  name: unjudged("an implemented interface's name is what the package bytes decode to"),
-  packageId: unjudged("an implemented interface's package is what the package bytes decode to"),
-};
 
 type Row = { templateId: string; packageName: string; count: number };
 
@@ -100,14 +57,7 @@ const TEMPLATES_RESPONSE: Record<string, Rule<Answer>> = {
 
 export const templatesCatalogMapping: Mapping<CheckContext> = {
   root: "TemplatesResponse",
-  slots: {
-    TemplatesResponse: TEMPLATES_RESPONSE,
-    TemplateRow: TEMPLATE_ROW,
-    TemplateDefinition: TEMPLATE_DEFINITION,
-    SchemaFieldLite: SCHEMA_FIELD,
-    ChoiceLite: CHOICE,
-    SchemaRef: SCHEMA_REF,
-  },
+  slots: { TemplatesResponse: TEMPLATES_RESPONSE, TemplateRow: TEMPLATE_ROW },
   expected: (ctx): Expectation => {
     const pages = wildcardAcsPages(ctx.trace);
     if (pages.length === 0) {

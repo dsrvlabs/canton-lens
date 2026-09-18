@@ -19,6 +19,7 @@ import { fileURLToPath } from "node:url";
 import { buildApp } from "../live/build-app.mjs";
 import { _clearSchemaCache } from "../router.ts";
 import { matchRoute, ROUTES } from "../routes.ts";
+import { ROUND_ONE, ROUND_TWO } from "./expectations.ts";
 import { type Given, partiesFromRights } from "./given.ts";
 import { fakeTokenFor, parseTape, replaySend, tapeKey } from "./ledger-tape.ts";
 import { type AnyRule, coverage, differences } from "./mapping.ts";
@@ -319,6 +320,22 @@ test("every mapping describes every slot the contract lets its answer reach", ()
   }
 });
 
+test("every address has its answer written out again by hand", () => {
+  // **The end of phase four, stated as a test.** Until now a path with no mapping was judged by the first
+  // three levels only — it responds, it matches the contract, the slots are filled — and none of those says
+  // the *values* are the ones the rules call for. Every path has a mapping now, and a new one arriving
+  // without one is caught here rather than passing quietly.
+  const mapped = new Set(Object.keys(MAPPINGS));
+  const missing = [...ROUND_ONE, ...ROUND_TWO]
+    .map((spec) => spec.name ?? spec.template)
+    .filter((name) => !mapped.has(name));
+  assert.deepEqual(
+    missing,
+    [],
+    "these addresses are asked but nobody wrote down what the answer should hold",
+  );
+});
+
 test("the slots no mapping judges are these, and nobody adds one quietly", () => {
   // **The escape hatch, listed by name.** A rule may decline a slot when the independent restatement would
   // *be* the product — a package's table of contents is whatever its bytes decode to, and writing that rule
@@ -349,23 +366,19 @@ test("the slots no mapping judges are these, and nobody adds one quietly", () =>
     "/api/catalog/packages PackageRow.schemaStatus",
     "/api/catalog/packages PackageRow.templates",
     "/api/catalog/packages PackageRow.version",
-    "/api/catalog/templates ChoiceLite.argFields",
-    "/api/catalog/templates ChoiceLite.argType",
-    "/api/catalog/templates ChoiceLite.consuming",
-    "/api/catalog/templates ChoiceLite.name",
-    "/api/catalog/templates ChoiceLite.returnType",
-    "/api/catalog/templates SchemaFieldLite.name",
-    "/api/catalog/templates SchemaFieldLite.type",
-    "/api/catalog/templates SchemaRef.module",
-    "/api/catalog/templates SchemaRef.name",
-    "/api/catalog/templates SchemaRef.packageId",
-    "/api/catalog/templates TemplateDefinition.choices",
-    "/api/catalog/templates TemplateDefinition.fields",
-    "/api/catalog/templates TemplateDefinition.implements",
-    "/api/catalog/templates TemplateDefinition.key",
-    "/api/catalog/templates TemplateDefinition.packageVersion",
-    "/api/catalog/templates TemplateDefinition.reason",
     "/api/catalog/templates TemplateRow.definition",
+    "/api/contracts/{contractId} ContractDetailResponse.schema",
+    "/api/packages/{packageId}/schema PackageSchemaResponse.counts",
+    "/api/packages/{packageId}/schema PackageSchemaResponse.lfVersion",
+    "/api/packages/{packageId}/schema PackageSchemaResponse.modules",
+    "/api/packages/{packageId}/schema PackageSchemaResponse.name",
+    "/api/packages/{packageId}/schema PackageSchemaResponse.version",
+    "/api/updates/by-offset/{offset} UpdateDetailEventWithSchema.choiceSchema",
+    "/api/updates/by-offset/{offset} UpdateDetailEventWithSchema.schemaStatus",
+    "/api/updates/by-offset/{offset} UpdateDetailEventWithSchema.templateSchema",
+    "/api/updates/{updateId} UpdateDetailEventWithSchema.choiceSchema",
+    "/api/updates/{updateId} UpdateDetailEventWithSchema.schemaStatus",
+    "/api/updates/{updateId} UpdateDetailEventWithSchema.templateSchema",
   ]);
 });
 

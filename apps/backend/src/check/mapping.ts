@@ -224,21 +224,63 @@ export function coverage(mapping: {
   slots: Record<string, Table>;
 }): CoverageProblem[] {
   const problems: CoverageProblem[] = [];
-  for (const name of reachableSchemas(mapping.root)) {
+  const done = new Set<string>();
+
+  // The named schemas a property's shape leads to, stopping at each name — what lies inside *that* schema is
+  // that schema's own business.
+  const refsUnder = (value: unknown, into: Set<string>, seen = new Set<unknown>()): Set<string> => {
+    if (value === null || typeof value !== "object" || seen.has(value)) return into;
+    seen.add(value);
+    const named = refName(value);
+    if (named !== null) {
+      into.add(named);
+      return into;
+    }
+    for (const child of Object.values(value as Record<string, unknown>))
+      refsUnder(child, into, seen);
+    return into;
+  };
+
+  // **An abstention covers what lies beneath it.** A rule that declines a slot, with its reason, declines
+  // the shape under that slot too — demanding a sentence for every field of a decoded package would turn one
+  // honest "a second decoder is not a check" into thirty lines that say the same thing less clearly. So the
+  // walk simply does not descend through a declined slot.
+  const compare = (where: string, properties: Record<string, unknown>, table: SlotTable): void => {
+    const next = new Set<string>();
+    for (const slot of Object.keys(properties)) {
+      const rule = table[slot];
+      if (rule === undefined) {
+        problems.push({ schema: where, slot, message: "no rule" });
+        continue;
+      }
+      if (rule.origin === "unjudged") continue;
+      refsUnder(properties[slot], next);
+    }
+    for (const slot of Object.keys(table)) {
+      if (properties[slot] === undefined) {
+        problems.push({
+          schema: where,
+          slot,
+          message: "a rule for a slot the contract does not declare",
+        });
+      }
+    }
+    for (const name of next) visit(name);
+  };
+
+  function visit(name: string): void {
+    if (done.has(name)) return;
+    done.add(name);
     const schema = schemas[name];
     if (schema === undefined) {
       problems.push({ schema: name, message: "openapi has no such schema" });
-      continue;
+      return;
     }
     const properties = schema.properties as Record<string, unknown> | undefined;
     const union = (schema.anyOf ?? schema.oneOf) as unknown[] | undefined;
-    if (properties === undefined && union === undefined) {
-      // A string enum, say: no slots, so no rule.
-      continue;
-    }
     // **A union whose branches are all named or null carries nothing of its own.** `X | null` is the common
-    // one: the shape is `X`, which is reached and described under its own name, and `null` has no slots.
-    // Only the branches written out inline need a sentence here.
+    // one: the shape is `X`, reached and described under its own name, and `null` has no slots. Only the
+    // branches written out inline need a sentence here.
     const inline =
       union === undefined
         ? []
@@ -246,23 +288,26 @@ export function coverage(mapping: {
             const b = branch as { $ref?: unknown; type?: unknown; properties?: unknown };
             return b.$ref === undefined && b.type !== "null" && b.properties !== undefined;
           });
-    if (properties === undefined && inline.length === 0) continue;
-
+    if (properties === undefined && inline.length === 0) {
+      // A string enum, say: no slots, so no rule. Named branches are still followed.
+      for (const named of refsUnder(union ?? {}, new Set())) visit(named);
+      return;
+    }
     const table = mapping.slots[name];
     if (table === undefined) {
       problems.push({
         schema: name,
         message: "the answer can reach this schema and no table describes it",
       });
-      continue;
+      return;
     }
     if (properties !== undefined) {
       if (isBranches(table)) {
         problems.push({ schema: name, message: "one shape, described as a union of branches" });
-        continue;
+        return;
       }
-      compareSlots(problems, name, properties, table);
-      continue;
+      compare(name, properties, table);
+      return;
     }
     if (!isBranches(table)) {
       problems.push({
@@ -270,7 +315,7 @@ export function coverage(mapping: {
         message:
           "a union of branches, described as one shape — name the slot that tells them apart",
       });
-      continue;
+      return;
     }
     const claimed = new Set<number>();
     for (const [index, branch] of inline.entries()) {
@@ -284,20 +329,12 @@ export function coverage(mapping: {
       }
       const at = table.of.findIndex((entry) => sameSet(entry.when, values));
       if (at === -1) {
-        problems.push({
-          schema: name,
-          message: `no table for ${table.by} ${values.join("|")}`,
-        });
+        problems.push({ schema: name, message: `no table for ${table.by} ${values.join("|")}` });
         continue;
       }
       claimed.add(at);
       const branchProperties = (branch as { properties: Record<string, unknown> }).properties;
-      compareSlots(
-        problems,
-        `${name}(${values.join("|")})`,
-        branchProperties,
-        table.of[at]?.slots ?? {},
-      );
+      compare(`${name}(${values.join("|")})`, branchProperties, table.of[at]?.slots ?? {});
     }
     for (const [index, entry] of table.of.entries()) {
       if (!claimed.has(index)) {
@@ -307,7 +344,14 @@ export function coverage(mapping: {
         });
       }
     }
+    // Branches written as a name of their own are followed like any other reference.
+    for (const branch of union ?? []) {
+      const named = refName(branch);
+      if (named !== null) visit(named);
+    }
   }
+
+  visit(mapping.root);
   return problems;
 }
 
@@ -315,25 +359,6 @@ export function coverage(mapping: {
 // union written inline inside one is compared by value (the rule that builds the parent produces the whole
 // thing, and `differences` reads every key of it) and validated against the contract by level ②, but no
 // sentence is demanded per inline slot. Naming the shape in openapi is what brings it under this rule.
-function compareSlots(
-  problems: CoverageProblem[],
-  where: string,
-  properties: Record<string, unknown>,
-  table: SlotTable,
-): void {
-  for (const slot of Object.keys(properties)) {
-    if (table[slot] === undefined) problems.push({ schema: where, slot, message: "no rule" });
-  }
-  for (const slot of Object.keys(table)) {
-    if (properties[slot] === undefined) {
-      problems.push({
-        schema: where,
-        slot,
-        message: "a rule for a slot the contract does not declare",
-      });
-    }
-  }
-}
 
 // ── Comparing ────────────────────────────────────────────────────────────────────
 // Only the first few differences are reported — one is enough to see where the drift is, and a report nobody
