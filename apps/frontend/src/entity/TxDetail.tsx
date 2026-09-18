@@ -394,7 +394,7 @@ function Events({ v }: { v: Tx }) {
               exceeds the section and the table breaks out of it sideways. */}
             <Table className="tx-events">
               <colgroup>
-                <col style={{ width: 36 }} />
+                <col style={{ width: ORDINAL_WIDTH }} />
                 {/* The tree column: the caret, the indent, the kind badge and the count a fold hides. Wide
                   enough for all four at the first levels; deeper than that the badge clips, and the row's
                   details still name the kind in full. */}
@@ -573,6 +573,9 @@ const INDENT_STEP = 26;
 // Where a rail is drawn inside its level — the middle of the step, so the elbow's corner sits under the
 // level above it rather than beside it.
 const RAIL_CENTRE = 9;
+// The ordinal column's width, which is also where the tree column's cells begin. The payload row spans the
+// whole table, so its rails are placed from the table's edge and have to skip that column to line up.
+const ORDINAL_WIDTH = 36;
 
 // One entry per level between this event and the root, outermost first: true where that ancestor still has
 // events below this row, which is the line that has to carry on past it. A subtree is contiguous in
@@ -765,7 +768,26 @@ function EventRow({
       </tr>
       {showDetails ? (
         <tr className={rowClass("tx-args")} {...hover}>
-          <td colSpan={7}>
+          <td className="tx-cell--tree" colSpan={7}>
+            {/* The payload row stands between an event and the events under it, so the lines cross it. The
+                connector's level carries on only where the parent has more children after this one, and the
+                row's own level carries on when it has children of its own showing. */}
+            {[
+              ...rails.slice(0, -1),
+              ...(rails.length > 0 ? [rails[rails.length - 1] === true] : []),
+            ]
+              .concat(opens ? [true] : [])
+              .map((carriesOn, level) =>
+                carriesOn ? (
+                  <span
+                    // biome-ignore lint/suspicious/noArrayIndexKey: the level is the name
+                    key={level}
+                    aria-hidden="true"
+                    className="tx-rail tx-rail--line"
+                    style={{ left: ORDINAL_WIDTH + level * INDENT_STEP + RAIL_CENTRE }}
+                  />
+                ) : null,
+              )}
             <EventDetail e={e} />
           </td>
         </tr>
