@@ -438,14 +438,17 @@ function Events({ v }: { v: Tx }) {
       {cut === "views" ? (
         <SectionBody>
           <Muted>
-            Cut where the set of parties changes. That is where Canton cuts a transaction into{" "}
-            <b>views</b> — regions whose informees are the same — and encrypts each one to those
-            parties alone, which is how the privacy above is enforced rather than promised.{" "}
-            <b>This is not the participant's own decomposition.</b> A view is cut on each node's own
-            informees; the events here carry <i>cumulative</i> informees (the node's and every
-            ancestor's), and an exercise's own set never arrives at all, so where the two differ
-            this cut is the coarser one. It is also cut out of what you received, not out of the
-            transaction.
+            Cut where the set of parties changes. Every event in a group went to exactly the parties
+            named on it — a view's informees receive everything under it as well — so on the
+            question "who received this part" the grouping is exact. That is also where Canton cuts
+            a transaction into <b>views</b>, regions whose informees are the same, encrypting each
+            to those parties alone: the privacy above, enforced rather than promised.{" "}
+            <b>This is not the participant's own decomposition.</b> A view is cut on each node's{" "}
+            <i>own</i> informees, and what arrives here is the <i>cumulative</i> set — the node's
+            and every ancestor's — while an exercise's own set never arrives at all. Those sets only
+            grow downwards, so this cut never invents a boundary Canton would not draw; what it
+            misses is the other kind, where a node's own informees narrow without a new party coming
+            in. And it is cut out of what you received, not out of the transaction.
           </Muted>
         </SectionBody>
       ) : null}
