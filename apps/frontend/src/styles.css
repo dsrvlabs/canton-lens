@@ -493,39 +493,50 @@
 .tx-events > tbody > tr > td:not(.tx-cell) {
   overflow-wrap: anywhere;
 }
-/* A chip is nowrap because value + Copy is one piece, but when the cell is narrower than that, it wraps
-   inside the piece — better than covering the neighbouring cell. */
-.tx-events .clds-badge .clds-inline {
+/* A chip is nowrap because a value and its Copy are one piece. The **cell** wraps instead, so a party and the
+   count beside it break onto a second line rather than the id breaking in half. */
+.tx-events .tx-detail .clds-badge .clds-inline {
   white-space: normal;
 }
 /* ── The event table drawn as a nested data table ──────────────────────────────
    One event is one row of fixed height. The hierarchy is said by the first cell alone — a caret where an
    exercise has events under it, and an indent — and every other cell holds one short value, clipped rather
    than wrapped. What does not fit waits behind the chevron at the end of the row. */
+/* A cell wraps rather than clips. A row is then one line or two, which is what the content asks for — the
+   alternative was a fixed line and an ellipsis in the middle of a template name or a party chip. */
 .tx-cell {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  /* break-word, not anywhere: a cell that runs out of room puts the next piece on the next line, and only a
+     single unbroken run (a contract id) is cut through. "controller" stays "controller". */
+  overflow-wrap: break-word;
 }
 .tx-cell--end {
   text-align: right;
 }
 .tx-lead {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--clds-space-2);
   min-width: 0;
 }
-/* When the indent leaves too little room, the badge gives way before the count does: the kind repeats down
-   the column and is in the details, the count of what is folded away is on this row alone. */
+/* The caret and the kind badge, held together. The line may wrap after them — the count of a folded subtree
+   drops below — but never between them: a caret alone on a line reads as a row of its own. */
+.tx-lead__kind {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: var(--clds-space-2);
+  min-width: 0;
+}
+/* Out of room, the kind breaks inside itself ("exercised ·" / "consuming") rather than pushing the caret off
+   its line. */
+.tx-lead__kind .clds-badge .clds-inline {
+  white-space: normal;
+}
+/* The kind badge is one piece — it wraps to the line below with the count beside it rather than being cut
+   through the middle of a word. */
 .tx-lead .clds-badge {
   min-width: 0;
-  overflow: hidden;
-}
-.tx-lead .clds-badge .clds-inline {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 .tx-folded {
   flex: none;
@@ -568,6 +579,14 @@
 .tx-event--clickable {
   cursor: pointer;
 }
+/* The reader's own standing on a row — one badge per capacity, in the accent the product uses for "this is
+   yours". Kept on one line with the rest of the row. */
+.tx-standing {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--clds-space-2);
+}
+
 /* Which cut the table is read by. The one in use is the heavier of the two — it is a statement about what
    you are looking at, not a control that has been taken away. */
 .tx-cut[aria-pressed="true"] {

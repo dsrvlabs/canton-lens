@@ -250,6 +250,13 @@ function Events({ v }: { v: Tx }) {
     for (const event of group.eventIndexes) groupOfEvent[event] = index;
   });
 
+  // Every capacity the reader's parties hold somewhere in a group, folded into one list.
+  const standingIn = (group: UpdateViewGroup): string[] => [
+    ...new Set(
+      group.eventIndexes.flatMap((i) => (v.events[i]?.yours ?? []).flatMap((r) => r.roles)),
+    ),
+  ];
+
   const ancestorsOf = (i: number): number[] => {
     const chain: number[] = [];
     for (let at = v.events[i]?.tree.ancestorIndex ?? null; at !== null; )
@@ -387,15 +394,19 @@ function Events({ v }: { v: Tx }) {
               exceeds the section and the table breaks out of it sideways. */}
             <Table className="tx-events">
               <colgroup>
-                <col style={{ width: 44 }} />
-                {/* The tree column: the caret, the indent and the kind badge. Wide enough for all three at
-                  the first levels; deeper than that the badge clips, and the row's details still name the
-                  kind in full. */}
-                <col style={{ width: 300 }} />
-                <col style={{ width: "24%" }} />
-                <col style={{ width: "16%" }} />
+                <col style={{ width: 36 }} />
+                {/* The tree column: the caret, the indent, the kind badge and the count a fold hides. Wide
+                  enough for all four at the first levels; deeper than that the badge clips, and the row's
+                  details still name the kind in full. */}
+                <col style={{ width: 290 }} />
+                {/* Template takes what the others leave, because it is the one cell whose length varies. */}
                 <col />
-                <col style={{ width: 44 }} />
+                <col style={{ width: 128 }} />
+                <col style={{ width: 150 }} />
+                {/* Where the reader stands. A column of its own, because "and me?" is asked down the table
+                    rather than of one row at a time. */}
+                <col style={{ width: 108 }} />
+                <col style={{ width: 36 }} />
               </colgroup>
               <tbody>
                 <tr>
@@ -404,6 +415,7 @@ function Events({ v }: { v: Tx }) {
                   <th>Template / choice</th>
                   <th>Contract</th>
                   <th>Witnesses</th>
+                  <th>You</th>
                   <th />
                 </tr>
                 {rows.map((row) =>
@@ -413,6 +425,7 @@ function Events({ v }: { v: Tx }) {
                       group={groups[row.group] as UpdateViewGroup}
                       n={row.group + 1}
                       again={row.again}
+                      standing={standingIn(groups[row.group] as UpdateViewGroup)}
                     />
                   ) : (
                     <EventRow
@@ -473,11 +486,22 @@ function Events({ v }: { v: Tx }) {
 //
 // A group is a region of the tree, not a run of rows, so it can resume after another group has been printed;
 // the head says "again" rather than numbering the same region twice.
-function ViewGroupRow({ group, n, again }: { group: UpdateViewGroup; n: number; again: boolean }) {
+function ViewGroupRow({
+  group,
+  n,
+  again,
+  standing,
+}: {
+  group: UpdateViewGroup;
+  n: number;
+  again: boolean;
+  // Every capacity the reader's parties hold somewhere in this group — "and me, in here?"
+  standing: string[];
+}) {
   const count = group.eventIndexes.length;
   return (
     <tr className="tx-view">
-      <td colSpan={6}>
+      <td colSpan={7}>
         <div
           className="tx-view__head"
           style={{ paddingInlineStart: Math.min(group.depth, INDENT_LEVELS) * INDENT_STEP }}
@@ -485,12 +509,48 @@ function ViewGroupRow({ group, n, again }: { group: UpdateViewGroup; n: number; 
           <b>view {n}</b>
           {again ? <Muted>continued</Muted> : null}
           <Muted>
-            {count} event{count === 1 ? "" : "s"} ·
+            {count} event{count === 1 ? "" : "s"} · received by
           </Muted>
           <PartyList values={group.witnesses} />
+          {standing.length === 0 ? null : (
+            <>
+              <Muted>· you</Muted>
+              {standing.map((role) => (
+                <Badge key={role} tone="accent" shape="rounded">
+                  {role}
+                </Badge>
+              ))}
+            </>
+          )}
         </div>
       </td>
     </tr>
+  );
+}
+
+// **Where the reader stands on this event.** The capacities are core's (explainVisibility), asked per party
+// and shown folded, because what a row has space for is "signatory", not "your party bob::… is a signatory".
+// The parties are in the title.
+//
+// `witness` on a created event is divulgence — a Create's informees are exactly its stakeholders — and the
+// row says that word instead. On an exercised event the same cannot be told (divulgedTo is null there), so
+// the capacity is left as it is.
+function YourStanding({ e }: { e: TxEvent }) {
+  const yours = e.yours ?? [];
+  if (yours.length === 0) return <Muted>—</Muted>;
+  const roles = [...new Set(yours.flatMap((r) => r.roles))];
+  const divulged = (e.divulgedTo ?? []).some((party) => yours.some((r) => r.party === party));
+  return (
+    <span
+      className="tx-standing"
+      title={yours.map((r) => `${r.party} — ${r.roles.join(", ")}`).join("\n")}
+    >
+      {roles.map((role) => (
+        <Badge key={role} tone="accent" shape="rounded">
+          {role === "witness" && divulged ? "divulged" : role}
+        </Badge>
+      ))}
+    </span>
   );
 }
 
@@ -527,6 +587,10 @@ function EventRow({
 }) {
   const { depth, descendantCount } = e.tree;
   const [open, setOpen] = useState(false);
+  // **Folding a subtree hides this row's own details too.** Open, they sit exactly where the subtree would,
+  // and a reader folding the events away is left looking at a block that did not go anywhere, unable to tell
+  // which of the two it is. The state is kept, so unfolding brings the details back as they were.
+  const showDetails = open && !folded;
   const witnesses = e.witnessParties ?? [];
   const rowClass = (base: string) =>
     `${base}${lit ? ` ${base}--lit` : ""}${dim ? ` ${base}--dim` : ""}`;
@@ -536,12 +600,14 @@ function EventRow({
   const openOnRowClick = (event: MouseEvent<HTMLTableRowElement>) => {
     if ((event.target as HTMLElement).closest("a, button, input, [role='button']")) return;
     if ((globalThis.getSelection?.()?.toString() ?? "") !== "") return;
-    setOpen(!open);
+    setOpen(!showDetails);
   };
   return (
     <>
       <tr
-        className={`${rowClass("tx-event")} tx-event--clickable${open ? " tx-event--open" : ""}`}
+        className={`${rowClass("tx-event")} tx-event--clickable${
+          showDetails ? " tx-event--open" : ""
+        }`}
         onClick={openOnRowClick}
         {...hover}
       >
@@ -553,31 +619,39 @@ function EventRow({
             className="tx-lead"
             style={{ paddingInlineStart: Math.min(depth, INDENT_LEVELS) * INDENT_STEP }}
           >
-            {descendantCount > 0 ? (
-              <button
-                type="button"
-                className="tx-caret"
-                aria-expanded={!folded}
-                aria-label={`${folded ? "Show" : "Hide"} the ${descendantCount} event${
-                  descendantCount === 1 ? "" : "s"
-                } under event ${i}`}
-                onClick={onToggle}
-              >
-                <span aria-hidden="true">{folded ? "▶" : "▼"}</span>
-              </button>
-            ) : (
-              /* The width a caret would take, so every badge in the column starts on one line. */
-              <span className="tx-caret tx-caret--none" aria-hidden="true" />
-            )}
-            {e.kind === "created" ? (
-              <Badge tone="positive" shape="rounded" mono>
-                created
-              </Badge>
-            ) : (
-              <Badge tone="negative" shape="rounded" mono>
-                exercised{e.consuming ? " · consuming" : ""}
-              </Badge>
-            )}
+            {/* The caret and the kind are one piece and never break apart — a caret on its own line above the
+                badge reads as a row of its own. Only the count of what is folded away may drop below them. */}
+            <span className="tx-lead__kind">
+              {descendantCount > 0 ? (
+                <button
+                  type="button"
+                  className="tx-caret"
+                  aria-expanded={!folded}
+                  aria-label={`${folded ? "Show" : "Hide"} the ${descendantCount} event${
+                    descendantCount === 1 ? "" : "s"
+                  } under event ${i}`}
+                  onClick={() => {
+                    // The details sit where the events under this one would, so they close out of the way.
+                    setOpen(false);
+                    onToggle();
+                  }}
+                >
+                  <span aria-hidden="true">{folded ? "▶" : "▼"}</span>
+                </button>
+              ) : (
+                /* The width a caret would take, so every badge in the column starts on one line. */
+                <span className="tx-caret tx-caret--none" aria-hidden="true" />
+              )}
+              {e.kind === "created" ? (
+                <Badge tone="positive" shape="rounded" mono>
+                  created
+                </Badge>
+              ) : (
+                <Badge tone="negative" shape="rounded" mono>
+                  exercised{e.consuming ? " · consuming" : ""}
+                </Badge>
+              )}
+            </span>
             {folded ? (
               // Short, because it shares a fixed column with the indent and the badge — the whole of it is
               // in the title, and the row's details say it in words.
@@ -618,21 +692,24 @@ function EventRow({
             </>
           )}
         </td>
+        <td className="tx-cell">
+          <YourStanding e={e} />
+        </td>
         <td className="tx-cell tx-cell--end">
           <button
             type="button"
             className="tx-caret tx-caret--more"
-            aria-expanded={open}
-            aria-label={`${open ? "Hide" : "Show"} the details of event ${i}`}
-            onClick={() => setOpen(!open)}
+            aria-expanded={showDetails}
+            aria-label={`${showDetails ? "Hide" : "Show"} the details of event ${i}`}
+            onClick={() => setOpen(!showDetails)}
           >
-            <span aria-hidden="true">{open ? "▾" : "▸"}</span>
+            <span aria-hidden="true">{showDetails ? "▾" : "▸"}</span>
           </button>
         </td>
       </tr>
-      {open ? (
+      {showDetails ? (
         <tr className={rowClass("tx-args")} {...hover}>
-          <td colSpan={6}>
+          <td colSpan={7}>
             <EventDetail e={e} />
           </td>
         </tr>

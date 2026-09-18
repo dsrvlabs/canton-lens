@@ -13,7 +13,11 @@
 
 import { isRecord, isStringArray } from "../internal/guards.ts";
 import { parseTemplateFqn } from "../template-identifier/parse-template-identifier.ts";
-import { explainVisibility, type VisibilityRole } from "../visibility/explain-visibility.ts";
+import {
+  explainVisibility,
+  type VisibilityReason,
+  type VisibilityRole,
+} from "../visibility/explain-visibility.ts";
 import { nestUpdateEvents, type UpdateEventPlacement } from "./nest-update-events.ts";
 
 export type UpdateDetailEvent = {
@@ -22,6 +26,11 @@ export type UpdateDetailEvent = {
   // exercised only — the last node id of everything that happened under this exercise. Equal to nodeId when
   // nothing did. A created event has no subtree, so null.
   lastDescendantNodeId: number | null;
+  // **Where the viewer stands on this event**, party by party — the same judgment the update's "visible to you
+  // because" line folds, kept per event so a row can say it without the reader counting event numbers off a
+  // sentence. Empty when none of their parties is named here, and empty for a viewer who holds no party of
+  // their own (a super reader reads as every party and is none of them).
+  yours: VisibilityReason[];
   // Where this event sits in the tree of the events shown — derived here (nestUpdateEvents), not sent by the node.
   tree: UpdateEventPlacement;
   // **created only — the parties this create was divulged to.** A Create node's informees are exactly its
@@ -138,8 +147,9 @@ export function buildUpdateDetail(
     return { ok: false, reason: "transaction_shape_mismatch" };
   }
 
-  // The tree placement is read off the whole list, so the events are gathered first and placed after.
-  const drafts: Omit<UpdateDetailEvent, "tree">[] = [];
+  // The tree placement and the viewer's standing are read off the whole list, so the events are gathered
+  // first and both are stamped on after.
+  const drafts: Omit<UpdateDetailEvent, "tree" | "yours">[] = [];
   for (const rawEvent of value.events) {
     if (!isRecord(rawEvent)) return { ok: false, reason: "event_shape_mismatch" };
     const created = isRecord(rawEvent.CreatedEvent) ? rawEvent.CreatedEvent : null;
@@ -194,10 +204,22 @@ export function buildUpdateDetail(
   }
 
   const placements = nestUpdateEvents(drafts);
+  // Asked once per event, and read twice: the row says it, and the fold below gathers it per party.
+  const explainedPerEvent = drafts.map((draft) =>
+    explainVisibility(viewerParties, {
+      signatories: draft.signatories ?? [],
+      observers: draft.observers ?? [],
+      witnessParties: draft.witnessParties,
+      // An exercised event's acting parties are its controllers, and a controller is an informee of that node
+      // by the exercise itself. Without them my own party fell through to "witness", which says the opposite.
+      actingParties: draft.actingParties ?? [],
+    }),
+  );
   const events: UpdateDetailEvent[] = drafts.map((draft, index) => ({
     ...draft,
     // One placement per event, in the same order — the root is the answer for a list that could not be nested.
     tree: placements[index] ?? { depth: 0, ancestorIndex: null, descendantCount: 0 },
+    yours: explainedPerEvent[index]?.status === "ok" ? explainedPerEvent[index].reasons : [],
   }));
 
   // “Why I can see this” — for each event, ask the role of my parties and gather per party.
@@ -208,16 +230,7 @@ export function buildUpdateDetail(
   // (see divulgedTo); on an exercised event it cannot be told apart from this response alone.
   const byParty = new Map<string, UpdateVisibilityReason>();
   events.forEach((event, index) => {
-    const explained = explainVisibility(viewerParties, {
-      signatories: event.signatories ?? [],
-      observers: event.observers ?? [],
-      witnessParties: event.witnessParties,
-      // An exercised event's acting parties are its controllers, and a controller is an informee of that node
-      // by the exercise itself. Without them my own party fell through to "witness", which says the opposite.
-      actingParties: event.actingParties ?? [],
-    });
-    if (explained.status !== "ok") return;
-    for (const reason of explained.reasons) {
+    for (const reason of event.yours) {
       const entry = byParty.get(reason.party) ?? {
         party: reason.party,
         roles: [],

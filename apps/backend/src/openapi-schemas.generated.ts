@@ -3529,6 +3529,12 @@ export const responseSchemas = {
       lastDescendantNodeId: {
         type: ["number", "null"],
       },
+      yours: {
+        type: "array",
+        items: {
+          $ref: "#/components/schemas/VisibilityReason",
+        },
+      },
       tree: {
         $ref: "#/components/schemas/UpdateEventPlacement",
       },
@@ -3643,6 +3649,7 @@ export const responseSchemas = {
       "templateSchema",
       "tree",
       "witnessParties",
+      "yours",
     ],
   },
   UpdateDetailHeader: {
