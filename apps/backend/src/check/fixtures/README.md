@@ -11,12 +11,12 @@ CI has no Canton node. So `run-check.test.ts` stands these files up in the ledge
 
 | | |
 |---|---|
-| Recorded at | 2026-09-18T08:07:19.441Z |
+| Recorded at | 2026-09-18T09:46:47.305Z |
 | Ledger | `http://localhost:7575` (a local dev stack, outside this repo) |
 | Canton version | 3.5.15 |
 | People | alice · bob · carol · nobody · idp · padmin · actor · super* · superplus* · dual · mixed · dave |
 | Ledger end | 161 — the point every answer here was read at |
-| Addresses asked | 193 (everything the check actually asks) |
+| Addresses asked | 344 (everything the check actually asks) |
 
 **Recorded with user tokens.** Recorded with an admin token, the files would hold everything rather than the
 boundary Canton enforces, and then they would be material unrelated to the statement this product exists to
@@ -35,7 +35,7 @@ because reading that from our own list would let an application that drops rows 
 
 | | |
 |---|---|
-| `ledger.jsonl` | 429 ledger questions and their answers. One pair per line |
+| `ledger.jsonl` | 473 ledger questions and their answers. One pair per line |
 | `packages/*.bin` | The raw bytes of 32 packages (358 KB) — the input to blueprint reading |
 | `meta.json` | The manifest the test reads — the instant recorded, the Canton version, and per person the party classification their rights imply and whether the seed left them anything to see |
 

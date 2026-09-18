@@ -1,5 +1,5 @@
 {
-  "recordedAt": "2026-09-18T08:07:19.441Z",
+  "recordedAt": "2026-09-18T09:46:47.305Z",
   "cantonVersion": "3.5.15",
   "ledger": "http://localhost:7575",
   "ledgerEnd": 161,
@@ -28,7 +28,14 @@
       ],
       "readsEveryParty": false,
       "seesContracts": true,
-      "seesUpdates": true
+      "seesUpdates": true,
+      "probes": {
+        "unseenContractId": "000dca33cb011c6c192dbdbe02a062f051ff7478429eacafd3141f6625ecf0a802ca121220bbd5c51c8a335df6579c056a46d5da5564b299bb2ff14c92b9539ced7b13fa11",
+        "unseenUpdateId": "1220ef656198304aef8c982e4a2aeafda7bf834112480c931502cecdaf19eb1f1786",
+        "unseenOffset": 36,
+        "archivedContractId": "00b8b506aedcf9a5d41373adffaf738d3654b254cad55969783c260b136805afcdca121220378e1e57b15191e1d659f4b870bfb8d14010a87c274c147a01d5164d86438f99",
+        "unseenParty": "dave::1220a408874e87ce1a06b495acde579f2d07864fb88daed6edae170731b618810c3e"
+      }
     },
     {
       "name": "bob",
@@ -42,7 +49,14 @@
       ],
       "readsEveryParty": false,
       "seesContracts": true,
-      "seesUpdates": true
+      "seesUpdates": true,
+      "probes": {
+        "unseenContractId": "00d558487feefed34b184c773a667844c5d1bfbfedf434485e56e37adac0e03f93ca12122037dd09d59024f9323282e7419892304510120a4990f81095691b5bd3b71e286d",
+        "unseenUpdateId": "12201cc1b2be95740d46228f36a8fee899462aac9afcf83864dc4ffa438d933879eb",
+        "unseenOffset": 51,
+        "archivedContractId": "00b8b506aedcf9a5d41373adffaf738d3654b254cad55969783c260b136805afcdca121220378e1e57b15191e1d659f4b870bfb8d14010a87c274c147a01d5164d86438f99",
+        "unseenParty": "acme-ops::1220a408874e87ce1a06b495acde579f2d07864fb88daed6edae170731b618810c3e"
+      }
     },
     {
       "name": "carol",
@@ -56,28 +70,56 @@
       ],
       "readsEveryParty": false,
       "seesContracts": true,
-      "seesUpdates": true
+      "seesUpdates": true,
+      "probes": {
+        "unseenContractId": "00969750582a92d5a370545d1243a11efeea1aeeec477916b5ea8db322252dbc6cca121220d3dbfd21ddfc563115605e2053cd56ba89eca66389fff808bb0118d79054ad02",
+        "unseenUpdateId": "12204a84ca7811754ca858e8794acb8d31127791195246cf9963e07b85c16271e797",
+        "unseenOffset": 27,
+        "archivedContractId": "0021b002c5bc5d2d1431bcee713037962637cd5620c3b6849b8ab527d155fb8443ca121220e546234881a9fb28bf650f1787ac91a0f8629c905d3ad931c7ef9408b9093094",
+        "unseenParty": "bob::1220a408874e87ce1a06b495acde579f2d07864fb88daed6edae170731b618810c3e"
+      }
     },
     {
       "name": "nobody",
       "parties": [],
       "readsEveryParty": false,
       "seesContracts": false,
-      "seesUpdates": false
+      "seesUpdates": false,
+      "probes": {
+        "unseenContractId": "00969750582a92d5a370545d1243a11efeea1aeeec477916b5ea8db322252dbc6cca121220d3dbfd21ddfc563115605e2053cd56ba89eca66389fff808bb0118d79054ad02",
+        "unseenUpdateId": "12204a84ca7811754ca858e8794acb8d31127791195246cf9963e07b85c16271e797",
+        "unseenOffset": 27,
+        "archivedContractId": null,
+        "unseenParty": "alice::1220a408874e87ce1a06b495acde579f2d07864fb88daed6edae170731b618810c3e"
+      }
     },
     {
       "name": "idp",
       "parties": [],
       "readsEveryParty": false,
       "seesContracts": false,
-      "seesUpdates": false
+      "seesUpdates": false,
+      "probes": {
+        "unseenContractId": "00969750582a92d5a370545d1243a11efeea1aeeec477916b5ea8db322252dbc6cca121220d3dbfd21ddfc563115605e2053cd56ba89eca66389fff808bb0118d79054ad02",
+        "unseenUpdateId": "12204a84ca7811754ca858e8794acb8d31127791195246cf9963e07b85c16271e797",
+        "unseenOffset": 27,
+        "archivedContractId": null,
+        "unseenParty": "alice::1220a408874e87ce1a06b495acde579f2d07864fb88daed6edae170731b618810c3e"
+      }
     },
     {
       "name": "padmin",
       "parties": [],
       "readsEveryParty": false,
       "seesContracts": false,
-      "seesUpdates": false
+      "seesUpdates": false,
+      "probes": {
+        "unseenContractId": "00969750582a92d5a370545d1243a11efeea1aeeec477916b5ea8db322252dbc6cca121220d3dbfd21ddfc563115605e2053cd56ba89eca66389fff808bb0118d79054ad02",
+        "unseenUpdateId": "12204a84ca7811754ca858e8794acb8d31127791195246cf9963e07b85c16271e797",
+        "unseenOffset": 27,
+        "archivedContractId": null,
+        "unseenParty": "alice::1220a408874e87ce1a06b495acde579f2d07864fb88daed6edae170731b618810c3e"
+      }
     },
     {
       "name": "actor",
@@ -91,14 +133,28 @@
       ],
       "readsEveryParty": false,
       "seesContracts": true,
-      "seesUpdates": true
+      "seesUpdates": true,
+      "probes": {
+        "unseenContractId": "00d558487feefed34b184c773a667844c5d1bfbfedf434485e56e37adac0e03f93ca12122037dd09d59024f9323282e7419892304510120a4990f81095691b5bd3b71e286d",
+        "unseenUpdateId": "12201cc1b2be95740d46228f36a8fee899462aac9afcf83864dc4ffa438d933879eb",
+        "unseenOffset": 51,
+        "archivedContractId": "00b8b506aedcf9a5d41373adffaf738d3654b254cad55969783c260b136805afcdca121220378e1e57b15191e1d659f4b870bfb8d14010a87c274c147a01d5164d86438f99",
+        "unseenParty": "acme-ops::1220a408874e87ce1a06b495acde579f2d07864fb88daed6edae170731b618810c3e"
+      }
     },
     {
       "name": "super",
       "parties": [],
       "readsEveryParty": true,
       "seesContracts": true,
-      "seesUpdates": true
+      "seesUpdates": true,
+      "probes": {
+        "unseenContractId": null,
+        "unseenUpdateId": null,
+        "unseenOffset": null,
+        "archivedContractId": "00b8b506aedcf9a5d41373adffaf738d3654b254cad55969783c260b136805afcdca121220378e1e57b15191e1d659f4b870bfb8d14010a87c274c147a01d5164d86438f99",
+        "unseenParty": "dave::1220a408874e87ce1a06b495acde579f2d07864fb88daed6edae170731b618810c3e"
+      }
     },
     {
       "name": "superplus",
@@ -112,7 +168,14 @@
       ],
       "readsEveryParty": true,
       "seesContracts": true,
-      "seesUpdates": true
+      "seesUpdates": true,
+      "probes": {
+        "unseenContractId": null,
+        "unseenUpdateId": null,
+        "unseenOffset": null,
+        "archivedContractId": "00b8b506aedcf9a5d41373adffaf738d3654b254cad55969783c260b136805afcdca121220378e1e57b15191e1d659f4b870bfb8d14010a87c274c147a01d5164d86438f99",
+        "unseenParty": "dave::1220a408874e87ce1a06b495acde579f2d07864fb88daed6edae170731b618810c3e"
+      }
     },
     {
       "name": "dual",
@@ -127,7 +190,14 @@
       ],
       "readsEveryParty": false,
       "seesContracts": true,
-      "seesUpdates": true
+      "seesUpdates": true,
+      "probes": {
+        "unseenContractId": "00d558487feefed34b184c773a667844c5d1bfbfedf434485e56e37adac0e03f93ca12122037dd09d59024f9323282e7419892304510120a4990f81095691b5bd3b71e286d",
+        "unseenUpdateId": "12201cc1b2be95740d46228f36a8fee899462aac9afcf83864dc4ffa438d933879eb",
+        "unseenOffset": 51,
+        "archivedContractId": "00b8b506aedcf9a5d41373adffaf738d3654b254cad55969783c260b136805afcdca121220378e1e57b15191e1d659f4b870bfb8d14010a87c274c147a01d5164d86438f99",
+        "unseenParty": "acme-ops::1220a408874e87ce1a06b495acde579f2d07864fb88daed6edae170731b618810c3e"
+      }
     },
     {
       "name": "mixed",
@@ -147,7 +217,14 @@
       ],
       "readsEveryParty": false,
       "seesContracts": true,
-      "seesUpdates": true
+      "seesUpdates": true,
+      "probes": {
+        "unseenContractId": "00c376a9690850d24b8465a24960de63a18ddd2387cba54555c9b80078d9270881ca121220486f2cd94ca247c2a3a5a308c059ddc00e1b9677c9db8ca2de159733e9ab747e",
+        "unseenUpdateId": "1220766fbfd5498bf470afe9fcb0a9d429dd7b3a96105386999456c81d1e9cf7c95b",
+        "unseenOffset": 54,
+        "archivedContractId": "00b8b506aedcf9a5d41373adffaf738d3654b254cad55969783c260b136805afcdca121220378e1e57b15191e1d659f4b870bfb8d14010a87c274c147a01d5164d86438f99",
+        "unseenParty": "dave::1220a408874e87ce1a06b495acde579f2d07864fb88daed6edae170731b618810c3e"
+      }
     },
     {
       "name": "dave",
@@ -161,7 +238,14 @@
       ],
       "readsEveryParty": false,
       "seesContracts": false,
-      "seesUpdates": false
+      "seesUpdates": false,
+      "probes": {
+        "unseenContractId": "00969750582a92d5a370545d1243a11efeea1aeeec477916b5ea8db322252dbc6cca121220d3dbfd21ddfc563115605e2053cd56ba89eca66389fff808bb0118d79054ad02",
+        "unseenUpdateId": "12204a84ca7811754ca858e8794acb8d31127791195246cf9963e07b85c16271e797",
+        "unseenOffset": 27,
+        "archivedContractId": null,
+        "unseenParty": "alice::1220a408874e87ce1a06b495acde579f2d07864fb88daed6edae170731b618810c3e"
+      }
     }
   ]
 }

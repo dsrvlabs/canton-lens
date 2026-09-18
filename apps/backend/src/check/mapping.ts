@@ -240,9 +240,9 @@ export function inlineShapes(mapping: { root: string; slots: Record<string, Tabl
     const union = (node.anyOf ?? node.oneOf) as unknown[] | undefined;
     // Only a shape that actually carries slots counts. `X | null` and `string[] | null` carry none: the
     // first is a named schema reached under its own name, the second has no fields to write a rule for.
-    const unionHasSlots =
-      union !== undefined &&
-      union.some((branch) => (branch as { properties?: unknown }).properties !== undefined);
+    const unionHasSlots = union?.some(
+      (branch) => (branch as { properties?: unknown }).properties !== undefined,
+    );
     if (node.properties !== undefined || unionHasSlots) {
       if (!seen.has(where)) {
         seen.add(where);

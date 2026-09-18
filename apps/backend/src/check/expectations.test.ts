@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { ROUND_ONE, ROUND_TWO } from "./expectations.ts";
 import type { Given, ViewerParty } from "./given.ts";
+import { NO_PROBES, PROBES } from "./probes.ts";
 import { type Ask, runCheck } from "./run-check.ts";
 
 // The twelve the seed will hold (phase 3 creates them). **Only the shape matters here** — the ordered party
@@ -112,6 +113,35 @@ test("the zeros that are right are exactly twenty-three, and every one of them h
   assert.equal(12 * 18 - total, 193);
 });
 
+test("the probes nobody has the material for are these, person by person", () => {
+  // **The same discipline for axis ⑤.** Fifteen kinds across five addresses, twelve people; a kind that
+  // cannot be built for somebody is written down with its reason rather than skipped, and the count is
+  // derived here from what each person *is*, not read off a run.
+  const kinds = PROBES.reduce((n, probe) => n + probe.kinds.length, 0);
+  assert.equal(kinds, 15, "the probe matrix changed shape");
+
+  const zeros: Record<string, number> = {
+    // No reading scope: the five `mine` kinds have nothing harvested to name, and nothing was archived
+    // where they could see it. What they *can* be asked is another's and absent — and the answer to both
+    // is the same refusal, which is the point.
+    nobody: 6,
+    idp: 6,
+    padmin: 6,
+    // The seed left them nothing of their own: no contract, no update, no offset, nothing archived. Their
+    // own party and the package catalogue are still theirs to name.
+    dave: 4,
+    // Reads every party, so nothing on this participant is another's — three kinds gone. And holds no
+    // party of their own, so there is no `mine` party to look up.
+    super: 4,
+    // The same three, but this one does hold a party.
+    superplus: 3,
+  };
+  const total = Object.values(zeros).reduce((n, count) => n + count, 0);
+  assert.equal(total, 29, "the probes nobody can be asked moved");
+  // Twelve people × fifteen kinds, less those.
+  assert.equal(12 * kinds - total, 151);
+});
+
 test("a viewer with no reading scope is served, refused and left unasked in the right places", async () => {
   // A stand-in for the node saying "no". **The 200 bodies here are deliberately minimal** — this test is
   // about which questions were put and what status came back, so findings about their content are expected
@@ -130,7 +160,7 @@ test("a viewer with no reading scope is served, refused and left unasked in the 
   };
 
   const report = await runCheck(
-    [{ name: "nobody", ask: refuseParties, given: NOTHING, tokenPayload: null }],
+    [{ name: "nobody", ask: refuseParties, given: NOTHING, tokenPayload: null, probes: NO_PROBES }],
     {
       iso: "2026-09-14T11:28:07.289Z",
       ms: Date.parse("2026-09-14T11:28:07.289Z"),
@@ -152,10 +182,25 @@ test("a viewer with no reading scope is served, refused and left unasked in the 
       "/api/packages/{packageId}/schema",
       "/api/party/{partyId}",
       "/api/search",
+      // **And every probe that needs something of their own to name.** What is left — an id that is
+      // somebody else's, and one that is nobody's — is still asked, and the answer to both must be the
+      // same refusal. That pair is the whole of axis ⑤ for this person.
+      "/api/contracts/{contractId} (mine)",
+      "/api/contracts/{contractId} (another's)",
+      "/api/contracts/{contractId} (archived)",
+      "/api/updates/{updateId} (mine)",
+      "/api/updates/{updateId} (another's)",
+      "/api/updates/by-offset/{offset} (mine)",
+      "/api/updates/by-offset/{offset} (another's)",
+      "/api/party/{partyId} (mine)",
+      "/api/party/{partyId} (another's)",
+      "/api/packages/{packageId}/schema (mine)",
     ],
   );
   for (const n of report.notAsked) assert.ok(n.why.length > 0, `${n.url} has no reason`);
-  assert.equal(report.asked, 12, "the twelve round-one addresses were all put to them");
+  // Twelve round-one addresses, plus the five probes that need nothing of this person's own to build:
+  // three "absent" ids, the offset past the end, and the package that is nobody's.
+  assert.equal(report.asked, 12 + 5, "the twelve round-one addresses were all put to them");
 });
 
 test("describing a person wrongly turns the check red rather than quietly green", async () => {
@@ -175,6 +220,7 @@ test("describing a person wrongly turns the check red rather than quietly green"
       {
         name: "x",
         tokenPayload: null,
+        probes: NO_PROBES,
         ask: served,
         given: NOTHING,
       },

@@ -19,6 +19,7 @@ import { type Harvest, harvest, ROUND_ONE, ROUND_TWO } from "./expectations.ts";
 import type { Given } from "./given.ts";
 import { checkPages, differences } from "./mapping.ts";
 import { MAPPINGS } from "./mappings/index.ts";
+import { answerDifference, type Kind, PROBES, type ProbeMaterial, whyNoProbe } from "./probes.ts";
 import type { NodeCall } from "./trace.ts";
 
 // The channel for asking one address as one person. Whoever built `ask` already holds the token — this keeps
@@ -42,6 +43,11 @@ export type CheckUser = {
    * itself. `null` when it is not a JWT. See `CheckContext.callerToken`.
    */
   tokenPayload: Record<string, unknown> | null;
+  /**
+   * What this person can be probed with for axis ⑤ — a contract they cannot see, one that was archived, a
+   * party they share nothing with. Worked out by asking the node directly, never from our own answers.
+   */
+  probes: ProbeMaterial;
 };
 
 // **This check does not read a clock either.** The API requires the "now" for judging expiry as a query
@@ -82,7 +88,7 @@ export type EndpointSpec = {
   unaskable?: (given: Given) => string | null;
 };
 
-export type Level = "responds" | "schema" | "filled" | "mapping";
+export type Level = "responds" | "schema" | "filled" | "mapping" | "sameness";
 export type Finding = { user: string; url: string; level: Level; message: string };
 
 /** An address that was rightly not put to someone, and why. Counted and printed, never silent. */
@@ -255,6 +261,13 @@ export async function runCheck(users: readonly CheckUser[], now: Now): Promise<C
     });
   }
 
+  // **What an address that belongs to nobody answered, and to whom.** Compared after everyone has been
+  // asked: within one person nothing collapses on that path, so the claim only exists across people.
+  const sharedAnswers = new Map<
+    string,
+    { user: string; answer: { status: number; body: unknown } }[]
+  >();
+
   for (const user of users) {
     const bodies = new Map<string, unknown>();
 
@@ -392,7 +405,99 @@ export async function runCheck(users: readonly CheckUser[], now: Now): Promise<C
       partyId: null,
     };
     await round(ROUND_ONE, NOTHING);
-    await round(ROUND_TWO, harvest(bodies));
+    const harvested = harvest(bodies);
+    await round(ROUND_TWO, harvested);
+
+    // ⑤ **Naming something that is not mine must look like naming something that is not there.**
+    // Judged between answers rather than against a rule, so it needs its own pass — nothing that looks at
+    // one answer at a time can see a difference between two.
+    for (const probe of PROBES) {
+      const answers = new Map<Kind, { status: number; body: unknown }>();
+      for (const kind of probe.kinds) {
+        const url = probe.url(kind, harvested, user.probes);
+        const label = `${probe.template} (${kind})`;
+        if (url === null) {
+          notAsked.push({
+            user: user.name,
+            url: label,
+            why: whyNoProbe(kind, user.given),
+          });
+          continue;
+        }
+        asked += 1;
+        const answer = await user.ask(url);
+        answers.set(kind, { status: answer.status, body: answer.body });
+        if (probe.sameForEveryone === true) {
+          const at = sharedAnswers.get(url) ?? [];
+          at.push({ user: user.name, answer: { status: answer.status, body: answer.body } });
+          sharedAnswers.set(url, at);
+        }
+        const want = probe.says(kind, user.given);
+        const said = (answer.body as { reason?: unknown; status?: unknown } | null) ?? {};
+        if (answer.status !== want.status) {
+          findings.push({
+            user: user.name,
+            url: label,
+            level: "sameness",
+            message: `expected ${want.status}, got ${answer.status}`,
+          });
+        }
+        if (want.reason !== undefined && said.reason !== want.reason) {
+          findings.push({
+            user: user.name,
+            url: label,
+            level: "sameness",
+            message: `expected the reason ${want.reason}, got ${String(said.reason)}`,
+          });
+        }
+        if (want.bodySays !== undefined && said.status !== want.bodySays) {
+          findings.push({
+            user: user.name,
+            url: label,
+            level: "sameness",
+            message: `expected the answer to say ${want.bodySays}, it said ${String(said.status)}`,
+          });
+        }
+      }
+      // The pairs that must not be told apart. A kind this person could not be asked drops out of the
+      // comparison rather than making one up.
+      const present = probe.identical.filter((kind) => answers.has(kind));
+      const first = present[0];
+      if (first === undefined) continue;
+      for (const kind of present.slice(1)) {
+        const difference = answerDifference(
+          answers.get(first) as { status: number; body: unknown },
+          answers.get(kind) as { status: number; body: unknown },
+          probe.ignoring ?? [],
+        );
+        if (difference !== null) {
+          findings.push({
+            user: user.name,
+            url: `${probe.template} (${first} against ${kind})`,
+            level: "sameness",
+            message: `these must not be told apart — ${difference}`,
+          });
+        }
+      }
+    }
+  }
+
+  // The cross-person claim. Grouped by the address itself, because two people who asked about two different
+  // packages are not making one claim — only the same address twice is.
+  for (const [url, asked2] of sharedAnswers) {
+    const first = asked2[0];
+    if (first === undefined) continue;
+    for (const other of asked2.slice(1)) {
+      const difference = answerDifference(first.answer, other.answer, []);
+      if (difference !== null) {
+        findings.push({
+          user: `${first.user} and ${other.user}`,
+          url,
+          level: "sameness",
+          message: `this belongs to nobody and must read the same to everyone — ${difference}`,
+        });
+      }
+    }
   }
 
   return {
@@ -414,10 +519,10 @@ export function formatReport(report: CheckReport): string {
       (report.findings.length === 0
         ? ""
         : ` (answers ${perLevel("responds")} · contract ${perLevel("schema")} · content ${perLevel("filled")}` +
-          ` · rules ${perLevel("mapping")})`),
+          ` · rules ${perLevel("mapping")} · sameness ${perLevel("sameness")})`),
   );
   for (const f of report.findings) {
-    const mark = { responds: "①", schema: "②", filled: "③", mapping: "④" }[f.level];
+    const mark = { responds: "①", schema: "②", filled: "③", mapping: "④", sameness: "⑤" }[f.level];
     lines.push(`  ${mark} ${f.user} ${f.url} — ${f.message}`);
   }
   for (const n of report.notAsked) lines.push(`  · ${n.user} ${n.url} — not asked: ${n.why}`);

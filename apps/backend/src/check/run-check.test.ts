@@ -24,6 +24,7 @@ import { type Given, partiesFromRights } from "./given.ts";
 import { fakeTokenFor, parseTape, replaySend, tapeKey } from "./ledger-tape.ts";
 import { type AnyRule, coverage, differences, inlineShapes } from "./mapping.ts";
 import { MAPPINGS } from "./mappings/index.ts";
+import { PROBES, type ProbeMaterial } from "./probes.ts";
 import { type Ask, describeCoverage, formatReport, nowFrom, runCheck } from "./run-check.ts";
 import { tracingSend } from "./trace.ts";
 
@@ -37,7 +38,7 @@ const FIXTURES = join(HERE, "fixtures");
 const meta = JSON.parse(await readFile(join(FIXTURES, "meta.json"), "utf8")) as {
   recordedAt: string;
   cantonVersion: string;
-  people: (Given & { name: string })[];
+  people: (Given & { name: string; probes: ProbeMaterial })[];
 };
 const entries = parseTape(await readFile(join(FIXTURES, "ledger.jsonl"), "utf8"));
 const bytes = new Map<string, Uint8Array>();
@@ -93,6 +94,9 @@ test("stands up the recorded ledger and passes every level (twelve people)", asy
       ask: askAs(person.name),
       given: person,
       tokenPayload: null,
+      // Recorded beside the tape by asking the node directly — "a contract this person cannot see" is
+      // exactly the thing our own answers would be wrong about if the defect were there.
+      probes: person.probes,
     })),
     nowFrom(recordedAt),
   );
@@ -118,12 +122,18 @@ test("stands up the recorded ledger and passes every level (twelve people)", asy
     12,
     "runs as twelve people — the boundary is only visible where the people differ",
   );
-  // 18 addresses × 12 people, less the 23 that legitimately cannot be put to someone.
-  assert.equal(report.asked, 193, `asked ${report.asked} times`);
+  // **Two tables, two counts, both derived rather than observed.**
+  //   the addresses:  18 × 12 = 216, less the 23 that legitimately cannot be put to someone → 193
+  //   the probes:     15 kinds × 12 = 180, less the 29 nobody has the material for → 151
+  // Both breakdowns are worked out person by person in expectations.test.ts; a number that moves without a
+  // person's shape changing is the thing these assertions exist to catch.
+  const PROBE_KINDS = PROBES.reduce((n, probe) => n + probe.kinds.length, 0);
+  assert.equal(PROBE_KINDS, 15, "the probe matrix changed shape");
+  assert.equal(report.asked, 193 + 151, `asked ${report.asked} times`);
   assert.equal(
     report.notAsked.length,
-    23,
-    `${report.notAsked.length} addresses were rightly not asked — the count is derived in expectations.test.ts`,
+    23 + 29,
+    `${report.notAsked.length} were rightly not asked — both counts are derived in expectations.test.ts`,
   );
 });
 
