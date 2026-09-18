@@ -529,13 +529,50 @@
   gap: var(--clds-space-2);
   min-width: 0;
 }
-/* Hangs from the row above — drawn, not spelled out, and in the faint ink so it is a mark rather than a
-   character in the sentence. */
-.tx-lead__elbow {
-  flex: none;
-  color: var(--clds-color-ink-faint);
-  font-family: var(--clds-font-mono);
-  line-height: 1;
+/* ── The rails ────────────────────────────────────────────────────────────────
+   A row is joined to the one it hangs from by a line. The rails are drawn against the cell, not inside the
+   line of text, so each one runs the cell's whole height and meets the rails on the rows above and below —
+   which is the difference between a tree and a column of marks that happen to be indented. */
+.tx-cell--tree {
+  position: relative;
+}
+.tx-rail {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 12px;
+  border-color: var(--clds-color-rule);
+  pointer-events: none;
+}
+/* An ancestor with events still below this row: its line passes straight through. */
+.tx-rail--line {
+  border-left: 1px solid var(--clds-color-rule);
+}
+/* Nothing left at that level — the space is kept so the levels stay in their columns. */
+.tx-rail--blank {
+  border: 0;
+}
+/* The turn into this row: down from the top, then across. Rounded, so the corner reads as one stroke. */
+.tx-rail--elbow {
+  bottom: auto;
+  height: 50%;
+  border-left: 1px solid var(--clds-color-rule);
+  border-bottom: 1px solid var(--clds-color-rule);
+  border-bottom-left-radius: 6px;
+}
+/* …and on past it, when the parent has more events below this one. */
+.tx-rail--through::after {
+  content: "";
+  position: absolute;
+  left: -1px;
+  top: 0;
+  height: 200%;
+  border-left: 1px solid var(--clds-color-rule);
+}
+/* A row with events of its own: the line leaves it downwards, from the middle to the row below. */
+.tx-rail--down {
+  top: 50%;
+  border-left: 1px solid var(--clds-color-rule);
 }
 
 /* Out of room, the kind breaks inside itself ("exercised ·" / "consuming") rather than pushing the caret off

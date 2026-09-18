@@ -436,6 +436,10 @@ function Events({ v }: { v: Tx }) {
                       e={v.events[row.at] as TxEvent}
                       i={row.at}
                       folded={folded.has(row.at)}
+                      rails={railsOf(v.events, row.at)}
+                      opens={
+                        (v.events[row.at]?.tree.descendantCount ?? 0) > 0 && !folded.has(row.at)
+                      }
                       lit={lit.includes(row.at)}
                       dim={
                         lens !== null && !(v.events[row.at]?.witnessParties ?? []).includes(lens)
@@ -566,11 +570,32 @@ function YourStanding({ e }: { e: TxEvent }) {
 // name the place exactly, so nothing is lost by stopping the stagger.
 const INDENT_LEVELS = 6;
 const INDENT_STEP = 26;
+// Where a rail is drawn inside its level — the middle of the step, so the elbow's corner sits under the
+// level above it rather than beside it.
+const RAIL_CENTRE = 9;
+
+// One entry per level between this event and the root, outermost first: true where that ancestor still has
+// events below this row, which is the line that has to carry on past it. A subtree is contiguous in
+// pre-order, so the ancestor at index `a` carries on past row `i` exactly when `a + descendantCount > i`.
+function railsOf(events: readonly TxEvent[], i: number): boolean[] {
+  const rails: boolean[] = [];
+  const row = events[i];
+  if (row === undefined) return rails;
+  for (let at = row.tree.ancestorIndex; at !== null; ) {
+    const ancestor = events[at];
+    if (ancestor === undefined) break;
+    rails.unshift(at + ancestor.tree.descendantCount > i);
+    at = ancestor.tree.ancestorIndex;
+  }
+  return rails.slice(0, INDENT_LEVELS);
+}
 
 function EventRow({
   e,
   i,
   folded,
+  rails,
+  opens,
   lit,
   dim,
   onToggle,
@@ -580,6 +605,10 @@ function EventRow({
   i: number;
   // This event's own subtree is hidden.
   folded: boolean;
+  // One per level above this row: whether that ancestor still has events below it.
+  rails: boolean[];
+  // This row has events of its own showing under it, so its line carries on downwards.
+  opens: boolean;
   // The pointer is on this event or on something under it.
   lit: boolean;
   // The lens is set to a party this event does not name — it stays, quietly.
@@ -616,7 +645,32 @@ function EventRow({
         <td>
           <Mono className="clds-muted">{i}</Mono>
         </td>
-        <td className="tx-cell">
+        <td className="tx-cell tx-cell--tree">
+          {/* The rails, drawn against the cell rather than inside the line, so they run its whole height and
+              meet the ones on the row above and the row below. A row is joined to the one it hangs from by a
+              line, not by the eye measuring an indent. */}
+          {rails.map((carriesOn, level) => (
+            <span
+              // biome-ignore lint/suspicious/noArrayIndexKey: the level is the name
+              key={level}
+              aria-hidden="true"
+              className={
+                level === rails.length - 1
+                  ? `tx-rail tx-rail--elbow${carriesOn ? " tx-rail--through" : ""}`
+                  : carriesOn
+                    ? "tx-rail tx-rail--line"
+                    : "tx-rail tx-rail--blank"
+              }
+              style={{ left: level * INDENT_STEP + RAIL_CENTRE }}
+            />
+          ))}
+          {opens ? (
+            <span
+              aria-hidden="true"
+              className="tx-rail tx-rail--down"
+              style={{ left: Math.min(depth, INDENT_LEVELS) * INDENT_STEP + RAIL_CENTRE }}
+            />
+          ) : null}
           <div
             className="tx-lead"
             style={{ paddingInlineStart: Math.min(depth, INDENT_LEVELS) * INDENT_STEP }}
@@ -624,13 +678,6 @@ function EventRow({
             {/* The caret and the kind are one piece and never break apart — a caret on its own line above the
                 badge reads as a row of its own. Only the count of what is folded away may drop below them. */}
             <span className="tx-lead__kind">
-              {/* The mark that says this row hangs under another. The indent alone is a few pixels between
-                  neighbours; the elbow is the thing the eye finds. */}
-              {depth > 0 ? (
-                <span className="tx-lead__elbow" aria-hidden="true">
-                  └
-                </span>
-              ) : null}
               {descendantCount > 0 ? (
                 <button
                   type="button"
