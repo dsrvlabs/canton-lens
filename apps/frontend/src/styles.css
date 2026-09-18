@@ -629,8 +629,14 @@
 .tx-detail > * + * {
   margin-top: var(--clds-space-4);
 }
-.tx-detail .clds-description-list {
+.tx-detail .clds-dl {
   margin: 0;
+}
+/* The facts about the event and the payloads that follow them are two kinds of thing. A hairline says where
+   one ends — light enough to be a seam rather than a second table. */
+.tx-detail > .clds-dl + * {
+  border-top: 1px solid var(--clds-color-rule);
+  padding-top: var(--clds-space-5);
 }
 /* The row under the pointer, lit as one piece with its open detail — the two are one event in two <tr>s, and
    :hover would paint whichever half the pointer is in. Direct children again, so a payload's own table is
