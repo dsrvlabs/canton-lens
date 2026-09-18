@@ -32,6 +32,26 @@ export const wildcardAcsPages = (trace: readonly NodeCall[]): NodeCall[] =>
       contractsAskedEverything(call.body),
   );
 
+/**
+ * The active-contracts pages asked **through one interface**, with the node's own view attached. A different
+ * question from the unnarrowed one and from any other interface's, so it is picked by the id that was asked
+ * for — reading "an active-contracts call" would mix three different questions' answers together.
+ */
+export const acsPagesForInterface = (trace: readonly NodeCall[], interfaceId: string): NodeCall[] =>
+  trace.filter((call) => {
+    if (call.method !== "POST" || !call.path.startsWith("/v2/state/active-contracts")) return false;
+    const filter = rec(rec(call.body).filter);
+    const cumulative = [
+      ...arr(rec(rec(filter.filtersForAnyParty)).cumulative),
+      ...Object.values(rec(filter.filtersByParty)).flatMap((one) => arr(rec(one).cumulative)),
+    ];
+    return cumulative.some(
+      (entry) =>
+        rec(rec(rec(rec(entry).identifierFilter).InterfaceFilter).value).interfaceId ===
+        interfaceId,
+    );
+  });
+
 export const wildcardUpdatePages = (trace: readonly NodeCall[]): NodeCall[] =>
   trace.filter(
     (call) =>

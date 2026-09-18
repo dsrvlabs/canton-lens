@@ -6,7 +6,9 @@
 // Applying a comparator to an address with no rules would compare against nothing and call it green.
 import type { CheckContext, Mapping } from "../mapping.ts";
 import { contractsMapping } from "./contracts.ts";
+import { holdingsMapping } from "./holdings.ts";
 import { nodeMapping } from "./node.ts";
+import { offersMapping } from "./offers.ts";
 import { packagesCatalogMapping } from "./packages-catalog.ts";
 import { partyMapping } from "./party.ts";
 import { preapprovalsMapping } from "./preapprovals.ts";
@@ -21,6 +23,8 @@ export const MAPPINGS: Record<string, Mapping<CheckContext>> = {
   "/api/contracts": contractsMapping,
   "/api/contracts?pageSize=2": contractsMapping,
   "/api/catalog/packages": packagesCatalogMapping,
+  "/api/offers": offersMapping,
+  "/api/holdings": holdingsMapping,
   "/api/node": nodeMapping,
   "/api/party/{partyId}": partyMapping,
   "/api/preapprovals": preapprovalsMapping,
