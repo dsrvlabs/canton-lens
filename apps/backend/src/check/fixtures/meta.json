@@ -1,10 +1,61 @@
 {
   "recordedAt": "2026-09-14T11:28:07.289Z",
-  "users": [
-    "alice",
-    "bob",
-    "carol"
-  ],
   "cantonVersion": "3.5.15",
-  "ledger": "http://localhost:7575"
+  "ledger": "http://localhost:7575",
+  "people": [
+    {
+      "name": "alice",
+      "parties": [
+        {
+          "party": "alice::1220e2b3c32f91feb4a21be4ea30a8302f1e9825e8ee2c9b3dd1bac4b84730372db9",
+          "kinds": [
+            "CanReadAs"
+          ]
+        },
+        {
+          "party": "acme-treasury::1220e2b3c32f91feb4a21be4ea30a8302f1e9825e8ee2c9b3dd1bac4b84730372db9",
+          "kinds": [
+            "CanReadAs"
+          ]
+        },
+        {
+          "party": "acme-ops::1220e2b3c32f91feb4a21be4ea30a8302f1e9825e8ee2c9b3dd1bac4b84730372db9",
+          "kinds": [
+            "CanReadAs"
+          ]
+        }
+      ],
+      "readsEveryParty": false,
+      "seesContracts": true,
+      "seesUpdates": true
+    },
+    {
+      "name": "bob",
+      "parties": [
+        {
+          "party": "bob::1220e2b3c32f91feb4a21be4ea30a8302f1e9825e8ee2c9b3dd1bac4b84730372db9",
+          "kinds": [
+            "CanReadAs"
+          ]
+        }
+      ],
+      "readsEveryParty": false,
+      "seesContracts": true,
+      "seesUpdates": true
+    },
+    {
+      "name": "carol",
+      "parties": [
+        {
+          "party": "carol::1220e2b3c32f91feb4a21be4ea30a8302f1e9825e8ee2c9b3dd1bac4b84730372db9",
+          "kinds": [
+            "CanReadAs"
+          ]
+        }
+      ],
+      "readsEveryParty": false,
+      "seesContracts": true,
+      "seesUpdates": true
+    }
+  ]
 }

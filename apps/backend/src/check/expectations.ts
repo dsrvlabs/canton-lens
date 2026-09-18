@@ -33,11 +33,31 @@ import type { EndpointSpec } from "./run-check.ts";
 const needsAParty = (given: Given) =>
   canRead(given) ? { status: 200 } : { status: 403, reason: "no_party_rights" };
 
-/** There is no id to put in the address, because this person's list of them is legitimately empty. */
-const nothingToNameIt = (given: Given): string | null => {
-  if (!canRead(given)) return "holds no reading scope, so the list this id comes from is refused";
-  if (!given.seesAnything) return "the seed put nothing on the ledger this person can see";
+/** There is no contract id to put in the address, because this person's list of them is legitimately empty. */
+const noContractToName = (given: Given): string | null => {
+  if (!canRead(given)) return "holds no reading scope, so the contract list is refused";
+  if (!given.seesContracts) return "the seed left this person no active contract";
   return null;
+};
+
+/** The same for an update id or an offset — a different read, so a different fact. */
+const noUpdateToName = (given: Given): string | null => {
+  if (!canRead(given)) return "holds no reading scope, so the update list is refused";
+  if (!given.seesUpdates) return "the seed left this person no visible update";
+  return null;
+};
+
+// "A list this person should see something in" and "a list that must be empty for them" are the same
+// sentence written twice, so it is written once here. **Empty is required, not tolerated**: a row arriving
+// for someone the seed gave nothing is another person's data on their screen.
+const listMatches = (
+  count: number,
+  expected: boolean,
+  what: string,
+  detail = "",
+): string | null => {
+  if (expected) return count >= 1 ? null : `${what} is empty${detail}`;
+  return count === 0 ? null : `the seed left this person nothing, and yet ${count} ${what} arrived`;
 };
 
 // **The two interface ids of the Splice token standard (CIP-56).** This API takes "which standard should I look
@@ -73,17 +93,29 @@ export const ROUND_ONE: readonly EndpointSpec[] = [
     // which is worth saying separately.
     // **The party list is compared with the node's own rights, not merely counted.** "One or more" would pass
     // a response that dropped two of alice's three, and it would fail every viewer whose empty list is right.
+    // **The whole classification is compared, in order, with the capacities.** Comparing the party names as
+    // a set let a response through that reordered them or collapsed two capacities into one — and those two
+    // are exactly what a person holding rights on two parties, or two rights on one party, exists to test.
     filled: (body, given) => {
       const b = rec(body);
       if (b.outcome !== "view") return `outcome is not "view" (${String(b.outcome)})`;
+      const say = (list: readonly { party: string; kinds: readonly string[] }[]) =>
+        list.map((p) => `${p.party.split("::")[0]}[${p.kinds.join("+")}]`).join(" ") || "(none)";
       const shown = arr(b.parties)
         .map(rec)
-        .map((p) => String(p.party));
-      const missing = given.parties.filter((p) => !shown.includes(p));
-      const extra = shown.filter((p) => !given.parties.includes(p));
-      if (missing.length > 0 || extra.length > 0) {
-        return `parties do not match the rights — ${missing.length} missing, ${extra.length} not granted`;
-      }
+        .map((p) => ({ party: String(p.party), kinds: arr(p.kinds).map(String) }));
+      const same =
+        shown.length === given.parties.length &&
+        shown.every((p, i) => {
+          const want = given.parties[i];
+          return (
+            want !== undefined &&
+            p.party === want.party &&
+            p.kinds.length === want.kinds.length &&
+            p.kinds.every((k, j) => k === want.kinds[j])
+          );
+        });
+      if (!same) return `parties are ${say(shown)}, the rights say ${say(given.parties)}`;
       // The scope is the other half of the same fact: reading every party is not the same as holding many.
       const wanted = given.readsEveryParty ? "instance-wide" : "own";
       return b.scope === wanted ? null : `scope is ${String(b.scope)}, expected ${wanted}`;
@@ -98,11 +130,16 @@ export const ROUND_ONE: readonly EndpointSpec[] = [
     // to catch — so the emptiness is stated, and a row breaks it.
     filled: (body, given) => {
       const total = rec(body).total;
-      if (given.seesAnything)
-        return len(body, "rows") >= 1 ? null : `rows is empty (total=${String(total)})`;
-      return len(body, "rows") === 0 && total === 0
-        ? null
-        : `the seed gave this person nothing, and yet ${len(body, "rows")} rows arrived (total=${String(total)})`;
+      const empty = listMatches(
+        len(body, "rows"),
+        given.seesContracts,
+        "rows",
+        ` (total=${String(total)})`,
+      );
+      if (empty !== null) return empty;
+      // `total` counts before the filter, and this address carries none — so it counts the same rows. Saying
+      // it separately is what catches a count taken from something other than what was shown.
+      return given.seesContracts || total === 0 ? null : `total is ${String(total)}, expected 0`;
     },
   },
   {
@@ -112,27 +149,15 @@ export const ROUND_ONE: readonly EndpointSpec[] = [
     url: () => "/api/contracts?pageSize=2",
     name: "/api/contracts?pageSize=2",
     status: needsAParty,
-    filled: (body, given) =>
-      given.seesAnything
-        ? len(body, "rows") >= 1
-          ? null
-          : "rows is empty"
-        : len(body, "rows") === 0
-          ? null
-          : `the seed gave this person nothing, and yet ${len(body, "rows")} rows arrived`,
+    filled: (body, given) => listMatches(len(body, "rows"), given.seesContracts, "rows"),
   },
   {
     template: "/api/updates",
     url: () => "/api/updates",
     status: needsAParty,
-    filled: (body, given) =>
-      given.seesAnything
-        ? len(body, "rows") >= 1
-          ? null
-          : "rows is empty"
-        : len(body, "rows") === 0
-          ? null
-          : `the seed gave this person nothing, and yet ${len(body, "rows")} rows arrived`,
+    // **Updates are history, not the snapshot.** Someone holding no active contract can still have archived
+    // one, so this is judged on its own fact rather than on the contract list's.
+    filled: (body, given) => listMatches(len(body, "rows"), given.seesUpdates, "rows"),
   },
   {
     template: "/api/timeline",
@@ -145,14 +170,12 @@ export const ROUND_ONE: readonly EndpointSpec[] = [
     // Two nested lists — groups, and the lifetimes inside them. An empty group array would leave every
     // lifetime field unchecked by ②, and a group with no lines would do the same one level down.
     status: needsAParty,
+    // A lifetime is drawn from the updates in the window **and** from what is still active, so either fact
+    // alone is enough to expect a group — and only both being false makes an empty answer the right one.
     filled: (body, given) => {
       const groups = arr(rec(body).groups).map(rec);
-      if (!given.seesAnything) {
-        return groups.length === 0
-          ? null
-          : `the seed gave this person nothing, and yet ${groups.length} groups arrived`;
-      }
-      if (groups.length === 0) return "groups is empty";
+      const empty = listMatches(groups.length, given.seesUpdates || given.seesContracts, "groups");
+      if (empty !== null || groups.length === 0) return empty;
       return groups.every((g) => arr(g.lines).length >= 1) ? null : "a group carries no lifetimes";
     },
   },
@@ -190,6 +213,19 @@ export const ROUND_ONE: readonly EndpointSpec[] = [
           return `cards.${name}.status is ${String(status)} (${String(rec(card).reason)}), expected "${wanted}"`;
         }
       }
+      // **A card that says "ok" still has to say the right number.** Checking the statuses alone let a home
+      // screen count someone else's contracts for a person who holds none, because the status was ok either
+      // way. The count is the answer; the status only says whether there is one.
+      const active = rec(cards.activeContracts).count;
+      if (!given.seesContracts && active !== 0) {
+        return `cards.activeContracts.count is ${String(active)}, expected 0`;
+      }
+      // The recent list is drawn from the updates, not from what is still active — so it answers to the
+      // other fact.
+      const recent = rec(rec(body).recent);
+      if (recent.status === "ok" && !given.seesUpdates && arr(recent.rows).length > 0) {
+        return `recent.rows holds ${arr(recent.rows).length} rows for someone the seed left nothing`;
+      }
       return null;
     },
   },
@@ -201,13 +237,7 @@ export const ROUND_ONE: readonly EndpointSpec[] = [
     filled: (body, given) => {
       const b = rec(body);
       if (b.kind !== "available") return `kind is not "available" (${String(b.reason)})`;
-      const groups = len(b, "view", "groups");
-      if (!given.seesAnything) {
-        return groups === 0
-          ? null
-          : `the seed gave this person nothing, and yet ${groups} groups arrived`;
-      }
-      return groups >= 1 ? null : "view.groups is empty";
+      return listMatches(len(b, "view", "groups"), given.seesContracts, "view.groups");
     },
   },
   {
@@ -218,13 +248,7 @@ export const ROUND_ONE: readonly EndpointSpec[] = [
     filled: (body, given) => {
       const b = rec(body);
       if (b.kind !== "available") return `kind is not "available" (${String(b.reason)})`;
-      const rows = len(b, "view", "rows");
-      if (!given.seesAnything) {
-        return rows === 0
-          ? null
-          : `the seed gave this person nothing, and yet ${rows} rows arrived`;
-      }
-      return rows >= 1 ? null : "view.rows is empty";
+      return listMatches(len(b, "view", "rows"), given.seesContracts, "view.rows");
     },
   },
   {
@@ -236,13 +260,7 @@ export const ROUND_ONE: readonly EndpointSpec[] = [
     filled: (body, given) => {
       const b = rec(body);
       if (b.kind !== "available") return `kind is not "available" (${String(b.reason)})`;
-      const rows = len(b, "view", "rows");
-      if (!given.seesAnything) {
-        return rows === 0
-          ? null
-          : `the seed gave this person nothing, and yet ${rows} rows arrived`;
-      }
-      return rows >= 1 ? null : "view.rows is empty";
+      return listMatches(len(b, "view", "rows"), given.seesContracts, "view.rows");
     },
   },
   {
@@ -256,12 +274,8 @@ export const ROUND_ONE: readonly EndpointSpec[] = [
     // unlike the package catalog below, whose rows are every installed package.
     filled: (body, given) => {
       const rows = arr(rec(body).rows).map(rec);
-      if (!given.seesAnything) {
-        return rows.length === 0
-          ? null
-          : `the seed gave this person nothing, and yet ${rows.length} templates arrived`;
-      }
-      if (rows.length === 0) return "rows is empty";
+      const empty = listMatches(rows.length, given.seesContracts, "rows");
+      if (empty !== null || rows.length === 0) return empty;
       const unreadable = rows.filter((r) => rec(r.definition).status !== "ok");
       if (unreadable.length > 0) {
         const say = unreadable
@@ -287,7 +301,7 @@ export const ROUND_ONE: readonly EndpointSpec[] = [
     // packages decoded on the real node too. If a package with an LF version we cannot read ever arrives,
     // this is what says so.
     status: needsAParty,
-    // **No `seesAnything` branch here on purpose.** These rows are every package installed on the
+    // **No emptiness branch here on purpose.** These rows are every package installed on the
     // participant (GET /v2/packages), not the packages my contracts use, so they are there for a person the
     // seed gave nothing too. Only `inMyContracts` goes empty for them.
     filled: (body) => {
@@ -341,7 +355,7 @@ export const ROUND_TWO: readonly EndpointSpec[] = [
     url: (h) => (h.contractId ? `/api/contracts/${encodeURIComponent(h.contractId)}` : null),
     need: "contractId (rows[0] of /api/contracts)",
     status: needsAParty,
-    unaskable: nothingToNameIt,
+    unaskable: noContractToName,
     // `schema.status` is checked too — unavailable also passes the contract, so with only that arriving, not
     // one of the field, choice or typedPayload schemas is checked.
     filled: (body) => {
@@ -357,7 +371,7 @@ export const ROUND_TWO: readonly EndpointSpec[] = [
     url: (h) => (h.updateId ? `/api/updates/${encodeURIComponent(h.updateId)}` : null),
     need: "updateId (rows[0] of /api/updates)",
     status: needsAParty,
-    unaskable: nothingToNameIt,
+    unaskable: noUpdateToName,
     // Only the transaction branch has events. If another branch arrived (a reassignment, say), say so.
     filled: (body) => {
       const b = rec(body);
@@ -370,7 +384,7 @@ export const ROUND_TWO: readonly EndpointSpec[] = [
     url: (h) => (h.offset === null ? null : `/api/updates/by-offset/${h.offset}`),
     need: "offset (rows[0].offset of /api/updates)",
     status: needsAParty,
-    unaskable: nothingToNameIt,
+    unaskable: noUpdateToName,
     filled: (body) => {
       const b = rec(body);
       if (b.kind !== "transaction") return `kind is not "transaction" (${String(b.kind)})`;
@@ -408,7 +422,7 @@ export const ROUND_TWO: readonly EndpointSpec[] = [
     // out_of_scope — that is the honest answer, not a failure.
     filled: (body, given) => {
       const b = rec(body);
-      if (!given.seesAnything) {
+      if (!given.seesContracts) {
         return b.status === "out_of_scope"
           ? null
           : `status is ${String(b.status)}, expected "out_of_scope" for a person with no contract`;
@@ -425,7 +439,7 @@ export const ROUND_TWO: readonly EndpointSpec[] = [
     url: (h) => (h.contractId ? `/api/search?q=${encodeURIComponent(h.contractId)}` : null),
     need: "contractId (rows[0] of /api/contracts)",
     status: needsAParty,
-    unaskable: nothingToNameIt,
+    unaskable: noContractToName,
     filled: (body) => {
       const b = rec(body);
       if (b.kind !== "contract_id") return `kind is not "contract_id" (${String(b.kind)})`;

@@ -28,10 +28,14 @@ import { tracingSend } from "./trace.ts";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const FIXTURES = join(HERE, "fixtures");
 
+// **The manifest beside the tape.** It says who was recorded and what each of them was given — the party
+// classification their rights imply, and whether the seed left them anything to see. The check reads this
+// rather than assuming; before the manifest existed every recorded person was assumed to hold data, and a
+// person the seed gave nothing would have been judged as one who holds some.
 const meta = JSON.parse(await readFile(join(FIXTURES, "meta.json"), "utf8")) as {
   recordedAt: string;
-  users: string[];
   cantonVersion: string;
+  people: (Given & { name: string })[];
 };
 const entries = parseTape(await readFile(join(FIXTURES, "ledger.jsonl"), "utf8"));
 const bytes = new Map<string, Uint8Array>();
@@ -78,16 +82,8 @@ test("stands up the recorded ledger and passes every level (three people)", asyn
 
   // **"Now" is the instant it was recorded.** Using the real clock would let the expiry times the seed planted
   // slip into the past, and one day the answers would change on their own — the ledger frozen, the clock running.
-  // **What each person was given.** The parties come from the node's own rights answer on the tape — that is
-  // the fact itself, not our reading of it, and it is what /api/session is then compared against. Whether the
-  // seed put anything in front of them is declared: reading it off our own list would let an application that
-  // drops everything agree with itself.
-  const given = (name: string): Given => {
-    const rights = entries.find((e) => e.who === name && e.path.endsWith("/rights"))?.response;
-    return { ...partiesFromRights(rights), seesAnything: true };
-  };
   const report = await runCheck(
-    meta.users.map((name) => ({ name, ask: askAs(name), given: given(name) })),
+    meta.people.map((person) => ({ name: person.name, ask: askAs(person.name), given: person })),
     nowFrom(recordedAt),
   );
   await app.close();
@@ -166,8 +162,9 @@ test("no credentials are in the fixture — only people's names", async () => {
   }
 
   // And the key holds nothing but the people the recording was made as.
+  const named = meta.people.map((p) => p.name);
   for (const entry of entries) {
-    assert.ok(meta.users.includes(entry.who), `an unknown person is in the key: ${entry.who}`);
+    assert.ok(named.includes(entry.who), `an unknown person is in the key: ${entry.who}`);
   }
 });
 
@@ -262,4 +259,28 @@ test("the comparison tells apart the things that look the same", () => {
   assert.equal(differences({ a: 1 }, { a: "1" }).length, 1, "a number and a string");
   assert.equal(differences({ a: [1] }, { a: 1 }).length, 1, "a list and a value");
   assert.ok(differences([1, 2], [1]).length >= 1, "a shorter list");
+});
+
+test("the manifest's classification is the one the node's own rights answer produces", () => {
+  // **The manifest is declared, so something has to hold it to the node.** Every value in it that can be
+  // derived from what the participant said is derived here and compared. What is left — whether the seed put
+  // anything in front of this person — is the part no recorded answer of ours can establish, and the
+  // independent recording (check/own-set.ts) is what will eventually stand behind it.
+  for (const person of meta.people) {
+    const rights = entries.find(
+      (e) => e.who === person.name && e.path.endsWith("/rights"),
+    )?.response;
+    assert.ok(rights !== undefined, `${person.name}: the tape holds no rights answer`);
+    const fromNode = partiesFromRights(rights);
+    assert.deepEqual(
+      fromNode.parties.map((p) => ({ party: p.party, kinds: [...p.kinds] })),
+      person.parties.map((p) => ({ party: p.party, kinds: [...p.kinds] })),
+      `${person.name}: the manifest and the node's rights disagree about the parties`,
+    );
+    assert.equal(
+      fromNode.readsEveryParty,
+      person.readsEveryParty,
+      `${person.name}: the manifest and the node's rights disagree about the scope`,
+    );
+  }
 });

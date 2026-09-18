@@ -7,41 +7,60 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { ROUND_ONE, ROUND_TWO } from "./expectations.ts";
-import type { Given } from "./given.ts";
+import type { Given, ViewerParty } from "./given.ts";
 import { type Ask, runCheck } from "./run-check.ts";
 
-// The twelve the seed will hold (phase 3 creates them). **Only the shape matters here** — how many parties of
-// their own, whether they read every party, and whether the seed put anything in front of them — so the party
-// ids are stand-ins. Their rights are written out in the plan; the classification is the product's
+// The twelve the seed will hold (phase 3 creates them). **Only the shape matters here** — the ordered party
+// classification, whether they read every party, and what the seed left in front of them — so the party ids
+// are stand-ins. Their rights are written out in the plan; the classification is the product's
 // (core/viewer-parties/build-viewer-parties.ts).
-const sees = (parties: string[], readsEveryParty = false): Given => ({
+const read = (party: string): ViewerParty => ({ party, kinds: ["CanReadAs"] });
+const act = (party: string): ViewerParty => ({ party, kinds: ["CanActAs"] });
+const sees = (parties: ViewerParty[], readsEveryParty = false): Given => ({
   parties,
   readsEveryParty,
-  seesAnything: true,
+  seesContracts: true,
+  seesUpdates: true,
 });
+/** Holds a party and the seed left them nothing — neither a contract nor an update in the window. */
+const empty = (parties: ViewerParty[]): Given => ({
+  parties,
+  readsEveryParty: false,
+  seesContracts: false,
+  seesUpdates: false,
+});
+/** Holds no party and no scope: the node reads nothing for them, so there is nothing to see either. */
+const NOTHING: Given = {
+  parties: [],
+  readsEveryParty: false,
+  seesContracts: false,
+  seesUpdates: false,
+};
+
 const PEOPLE: Record<string, Given> = {
   // CanReadAs on three parties.
-  alice: sees(["p1", "p2", "p3"]),
-  bob: sees(["p2"]),
-  carol: sees(["p3"]),
+  alice: sees([read("p1"), read("p2"), read("p3")]),
+  bob: sees([read("p2")]),
+  carol: sees([read("p3")]),
   // No rights at all.
-  nobody: { parties: [], readsEveryParty: false, seesAnything: false },
-  // IdentityProviderAdmin / ParticipantAdmin name no party, and administering a participant is not a right to
-  // read from it — so these two are the same person as `nobody` as far as reading goes.
-  idp: { parties: [], readsEveryParty: false, seesAnything: false },
-  padmin: { parties: [], readsEveryParty: false, seesAnything: false },
+  nobody: NOTHING,
+  // IdentityProviderAdmin / ParticipantAdmin name no party, and administering a participant is not a right
+  // to read from it — the account holding ParticipantAdmin on the dev stack is itself answered 403 to an
+  // any-party read. So these two are the same person as `nobody` as far as reading goes.
+  idp: NOTHING,
+  padmin: NOTHING,
   // CanActAs alone still names a party, and reading follows from it.
-  actor: sees(["p2"]),
+  actor: sees([act("p2")]),
   // CanReadAsAnyParty: reads every party, is party to none.
   super: sees([], true),
   // The same, plus one party of their own — which does not narrow the reading.
-  superplus: sees(["p2"], true),
-  // CanReadAs and CanActAs on the same party collapse to one party.
-  dual: sees(["p2"]),
-  // Two rights on two parties.
-  mixed: sees(["p2", "p3"]),
-  // One party, and the seed gave them nothing.
-  dave: { parties: ["p4"], readsEveryParty: false, seesAnything: false },
+  superplus: sees([read("p2")], true),
+  // CanReadAs and CanActAs on the same party collapse to **one** party carrying both capacities.
+  dual: sees([{ party: "p2", kinds: ["CanReadAs", "CanActAs"] }]),
+  // Two rights on two parties — the order is the rights' order, and that is the thing being tested.
+  mixed: sees([read("p2"), act("p3")]),
+  // One party, and the seed left them nothing.
+  dave: empty([read("p4")]),
 };
 
 test("the zeros that are right are exactly twenty-three, and every one of them has a reason", () => {
@@ -110,10 +129,10 @@ test("a viewer with no reading scope is served, refused and left unasked in the 
     return { status: 200, body, ledger: [] };
   };
 
-  const report = await runCheck(
-    [{ name: "nobody", ask: refuseParties, given: PEOPLE.nobody as Given }],
-    { iso: "2026-09-14T11:28:07.289Z", ms: Date.parse("2026-09-14T11:28:07.289Z") },
-  );
+  const report = await runCheck([{ name: "nobody", ask: refuseParties, given: NOTHING }], {
+    iso: "2026-09-14T11:28:07.289Z",
+    ms: Date.parse("2026-09-14T11:28:07.289Z"),
+  });
 
   // Every refusal was the answer this person was owed, and the three open addresses were served.
   assert.deepEqual(
@@ -153,7 +172,7 @@ test("describing a person wrongly turns the check red rather than quietly green"
       {
         name: "x",
         ask: served,
-        given: { parties: [], readsEveryParty: false, seesAnything: false },
+        given: NOTHING,
       },
     ],
     { iso: "2026-09-14T11:28:07.289Z", ms: Date.parse("2026-09-14T11:28:07.289Z") },
@@ -167,7 +186,50 @@ test("describing a person wrongly turns the check red rather than quietly green"
     "an address built for someone who was said to have nothing to name it with is a defect",
   );
   assert.ok(
-    asNobody.findings.some((f) => f.url === "/api/session" && f.message.includes("not granted")),
+    asNobody.findings.some(
+      (f) => f.url === "/api/session" && f.message.includes("the rights say (none)"),
+    ),
     "a party in the session that the rights never granted is a defect",
+  );
+});
+
+test("the session is judged on the whole classification — order and capacities, not a set of names", () => {
+  // **This is why `mixed` and `dual` are in the seed at all.** Compared as a set of party names, a response
+  // that reordered them or dropped one of two capacities passed, and the two people who exist to catch
+  // exactly that caught nothing.
+  const session = ROUND_ONE.find((spec) => spec.template === "/api/session");
+  assert.ok(session !== undefined);
+  const body = (parties: { party: string; kinds: string[] }[]) => ({
+    outcome: "view",
+    scope: "own",
+    parties,
+  });
+  const mixed = PEOPLE.mixed as Given;
+  const right = mixed.parties.map((p) => ({ party: p.party, kinds: [...p.kinds] }));
+  assert.equal(
+    session.filled(body(right), mixed),
+    null,
+    "the classification as the rights state it",
+  );
+  // Reordered — the rights' order is the product's own rule, so a different order is a different answer.
+  assert.ok(session.filled(body([...right].reverse()), mixed) !== null, "reordered");
+  // One party holding two capacities is not the same as one holding one.
+  const dual = PEOPLE.dual as Given;
+  assert.equal(
+    session.filled(body([{ party: "p2", kinds: ["CanReadAs", "CanActAs"] }]), dual),
+    null,
+  );
+  assert.ok(
+    session.filled(body([{ party: "p2", kinds: ["CanReadAs"] }]), dual) !== null,
+    "a lost capacity",
+  );
+  assert.ok(
+    session.filled(body([{ party: "p2", kinds: ["CanActAs", "CanReadAs"] }]), dual) !== null,
+    "the capacities in the other order",
+  );
+  // The same party twice is not the same as once.
+  assert.ok(
+    session.filled(body([...right, right[0] as never]), mixed) !== null,
+    "a duplicated party",
   );
 });
