@@ -13,6 +13,7 @@
 import type { ValidateFunction } from "ajv";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import { openApiDocument } from "../openapi.ts";
+import { routeTemplates } from "../routes.ts";
 import { type Harvest, harvest, ROUND_ONE, ROUND_TWO } from "./expectations.ts";
 import type { Given } from "./given.ts";
 import { checkPages, differences } from "./mapping.ts";
@@ -152,8 +153,14 @@ export function describeCoverage(): {
   /** Every operation openapi declares, as `"GET /api/session"`. */
   openApiOperations: string[];
   checkedOperations: string[];
+  /** Every address the router recognises, as an openapi path template. */
+  routerPaths: string[];
   missingFromCheck: string[];
   withoutValidator: string[];
+  /** Declared in openapi, not recognised by the router — the document promises an address that 404s. */
+  missingFromRouter: string[];
+  /** Answered by the router, absent from openapi — an address nobody agreed to and nothing describes. */
+  undocumented: string[];
 } {
   const validators = schemaValidators();
   const all = operations();
@@ -162,11 +169,16 @@ export function describeCoverage(): {
     [...ROUND_ONE, ...ROUND_TWO].map((spec) => operationName("GET", spec.template)),
   );
   const names = all.map((o) => operationName(o.method, o.path));
+  const documented = new Set(all.map((o) => o.path));
+  const answered = new Set(routeTemplates());
   return {
     openApiOperations: names,
     checkedOperations: [...covered],
+    routerPaths: [...answered],
     missingFromCheck: names.filter((n) => !covered.has(n)),
     withoutValidator: names.filter((n) => !validators.has(n)),
+    missingFromRouter: [...documented].filter((p) => !answered.has(p)),
+    undocumented: [...answered].filter((p) => !documented.has(p)),
   };
 }
 
@@ -178,17 +190,40 @@ export async function runCheck(users: readonly CheckUser[], now: Now): Promise<C
   const notAsked: NotAsked[] = [];
   let asked = 0;
 
-  // **The coverage guard — it stops a new operation from arriving unchecked.** Without it, an operation could
-  // be added to openapi and the check would still be green, and "all 16 addresses are looked at" would quietly
-  // become false. The table does not adjust itself to openapi; it is the other way round — the contract is the
-  // source of truth.
-  for (const name of describeCoverage().missingFromCheck) {
+  // **The three sets of addresses have to be one set.** The router answers some addresses, openapi declares
+  // some, and the check table asks about some; "every address is looked at" is only true when those name the
+  // same things. Each direction is a different failure and each is reported as itself:
+  //
+  //   openapi \ check     — an operation was added to the contract and nothing ever asks for it
+  //   openapi \ router    — the document promises an address that answers 404
+  //   router \ openapi    — the application answers at an address nothing describes and nothing checks
+  //
+  // The contract stays the source of truth: neither the table nor the router adjusts itself to the others.
+  const coverage = describeCoverage();
+  for (const name of coverage.missingFromCheck) {
     findings.push({
       user: "(all)",
       url: name,
       level: "filled",
       message:
         "declared in openapi but absent from the check table (expectations.ts) — never asked",
+    });
+  }
+  for (const path of coverage.missingFromRouter) {
+    findings.push({
+      user: "(all)",
+      url: path,
+      level: "filled",
+      message: "declared in openapi but not an address the router answers (routes.ts) — it 404s",
+    });
+  }
+  for (const path of coverage.undocumented) {
+    findings.push({
+      user: "(all)",
+      url: path,
+      level: "filled",
+      message:
+        "answered by the router (routes.ts) but absent from openapi — undocumented, unchecked",
     });
   }
 

@@ -18,6 +18,7 @@ import { fileURLToPath } from "node:url";
 // fail level ② wholesale — so this test sees **exactly what the server answers**.
 import { buildApp } from "../live/build-app.mjs";
 import { _clearSchemaCache } from "../router.ts";
+import { matchRoute, ROUTES } from "../routes.ts";
 import { type Given, partiesFromRights } from "./given.ts";
 import { fakeTokenFor, parseTape, replaySend, tapeKey } from "./ledger-tape.ts";
 import { coverage, differences } from "./mapping.ts";
@@ -198,6 +199,60 @@ test("every operation openapi declares is in the check table, and every 200 sche
     coverage.openApiOperations.length,
     17,
     "the number of operations changed — if it grew, check that the new one is in the table",
+  );
+});
+
+test("the router, openapi and the check table name the same addresses", () => {
+  // **Three lists, one set.** Until the router's addresses were a value (`routes.ts`) this could not be
+  // asked at all: the set lived as sixteen booleans inside the dispatch, so an address could be answered and
+  // undocumented, or documented and unanswered, and every test stayed green. Each direction is its own
+  // failure, so each is asserted separately rather than as one set equality.
+  const coverage = describeCoverage();
+  assert.deepEqual(
+    coverage.missingFromRouter,
+    [],
+    "openapi declares these but the router has no such address — they would answer 404",
+  );
+  assert.deepEqual(
+    coverage.undocumented,
+    [],
+    "the router answers these but openapi does not declare them — undocumented and unchecked",
+  );
+  assert.equal(
+    coverage.routerPaths.length,
+    17,
+    "the number of addresses the router answers changed",
+  );
+  // The templates are compared character for character on purpose — `{updateId}` against `{updateId}`. A
+  // translation between the two notations would be a place for them to drift while this stays green.
+  assert.deepEqual(
+    [...coverage.routerPaths].sort(),
+    [...new Set(coverage.openApiOperations.map((n) => n.slice(n.indexOf(" ") + 1)))].sort(),
+  );
+});
+
+test("every address in the route list matches its own template, and nothing else's", () => {
+  // The list is only a set of addresses if each pattern recognises the path its template names. A typo in a
+  // pattern would otherwise be invisible: the template would still be counted, and the path would 404.
+  for (const route of ROUTES) {
+    const example = route.template
+      .replace("{contractId}", "00abc")
+      .replace("{partyId}", "alice::1220")
+      .replace("{updateId}", "1220ff")
+      .replace("{offset}", "168")
+      .replace("{packageId}", "a".repeat(64));
+    const found = matchRoute(example);
+    assert.equal(found?.template, route.template, `${example} should be ${route.template}`);
+  }
+  assert.equal(matchRoute("/api/nothing"), null);
+  assert.equal(matchRoute("/api/contracts/"), null, "an empty segment is not an address");
+  // A package id is a content hash; a path that is not one is not this address (and must not become the
+  // catch-all `/api/updates/{updateId}` or anything else either).
+  assert.equal(matchRoute("/api/packages/xyz/schema"), null);
+  assert.equal(
+    matchRoute("/api/updates/by-offset/168")?.template,
+    "/api/updates/by-offset/{offset}",
+    "the two-segment form must not be read as an update id",
   );
 });
 
