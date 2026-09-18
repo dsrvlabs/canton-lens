@@ -116,7 +116,7 @@ async function everyAddress(): Promise<{ label: string; url: string }[]> {
 
 test("every read of every address, broken one at a time, is answered by saying so", async () => {
   const addresses = await everyAddress();
-  assert.equal(addresses.length, 19, "the check table changed shape");
+  assert.equal(addresses.length, 21, "the check table changed shape");
 
   const findings: string[] = [];
   let broken = 0;

@@ -24,6 +24,7 @@ import { type Given, partiesFromRights } from "./given.ts";
 import { fakeTokenFor, parseTape, replaySend, tapeKey } from "./ledger-tape.ts";
 import { type AnyRule, coverage, differences, inlineShapes } from "./mapping.ts";
 import { MAPPINGS } from "./mappings/index.ts";
+import type { OwnSet } from "./own-set.ts";
 import { PROBES, type ProbeMaterial } from "./probes.ts";
 import { type Ask, describeCoverage, formatReport, nowFrom, runCheck } from "./run-check.ts";
 import { tracingSend } from "./trace.ts";
@@ -40,6 +41,11 @@ const meta = JSON.parse(await readFile(join(FIXTURES, "meta.json"), "utf8")) as 
   cantonVersion: string;
   people: (Given & { name: string; probes: ProbeMaterial })[];
 };
+// **The answer key** — what the node said each person can see, asked with their token and not through this
+// application (check/own-set.ts). Every other input here is the node's answer to *our* question, so a
+// narrowed question shrinks the tape, the answer and the expectation together and all three agree. This is
+// the only thing outside that loop.
+const own = JSON.parse(await readFile(join(FIXTURES, "own-set.json"), "utf8")) as OwnSet;
 const entries = parseTape(await readFile(join(FIXTURES, "ledger.jsonl"), "utf8"));
 const bytes = new Map<string, Uint8Array>();
 for (const name of await readdir(join(FIXTURES, "packages"))) {
@@ -99,6 +105,7 @@ test("stands up the recorded ledger and passes every level (twelve people)", asy
       probes: person.probes,
     })),
     nowFrom(recordedAt),
+    { own, tapeOffset: own.atOffset },
   );
   await app.close();
 
@@ -123,13 +130,13 @@ test("stands up the recorded ledger and passes every level (twelve people)", asy
     "runs as twelve people — the boundary is only visible where the people differ",
   );
   // **Two tables, two counts, both derived rather than observed.**
-  //   the addresses:  19 × 12 = 228, less the 27 that legitimately cannot be put to someone → 201
+  //   the addresses:  21 × 12 = 252, less the 27 that legitimately cannot be put to someone → 225
   //   the probes:     15 kinds × 12 = 180, less the 29 nobody has the material for → 151
   // Both breakdowns are worked out person by person in expectations.test.ts; a number that moves without a
   // person's shape changing is the thing these assertions exist to catch.
   const PROBE_KINDS = PROBES.reduce((n, probe) => n + probe.kinds.length, 0);
   assert.equal(PROBE_KINDS, 15, "the probe matrix changed shape");
-  assert.equal(report.asked, 201 + 151, `asked ${report.asked} times`);
+  assert.equal(report.asked, 225 + 151, `asked ${report.asked} times`);
   assert.equal(
     report.notAsked.length,
     27 + 29,

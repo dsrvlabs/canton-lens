@@ -152,11 +152,30 @@ export const ROUND_ONE: readonly EndpointSpec[] = [
     filled: (body, given) => listMatches(len(body, "rows"), given.seesContracts, "rows"),
   },
   {
+    // **The whole list, so it can be set beside the answer key.** The answer key (check/own-set.ts) is every
+    // contract the node says this person can see, asked without going through us; comparing it with a page
+    // would report everything past the page boundary as missing. A thousand is above anything this seed
+    // holds, and the node was asked for the whole snapshot either way — the page is cut in memory.
+    template: "/api/contracts",
+    url: () => "/api/contracts?pageSize=1000",
+    name: "/api/contracts (every one)",
+    status: needsAParty,
+    filled: (body, given) => listMatches(len(body, "rows"), given.seesContracts, "rows"),
+  },
+  {
     template: "/api/updates",
     url: () => "/api/updates",
     status: needsAParty,
     // **Updates are history, not the snapshot.** Someone holding no active contract can still have archived
     // one, so this is judged on its own fact rather than on the contract list's.
+    filled: (body, given) => listMatches(len(body, "rows"), given.seesUpdates, "rows"),
+  },
+  {
+    // The same, for updates. `limit` is this address's own word for a page size.
+    template: "/api/updates",
+    url: () => "/api/updates?limit=1000",
+    name: "/api/updates (every one)",
+    status: needsAParty,
     filled: (body, given) => listMatches(len(body, "rows"), given.seesUpdates, "rows"),
   },
   {

@@ -20,6 +20,7 @@ import { type Harvest, harvest, ROUND_ONE, ROUND_TWO } from "./expectations.ts";
 import type { Given } from "./given.ts";
 import { checkPages, differences } from "./mapping.ts";
 import { MAPPINGS } from "./mappings/index.ts";
+import { compareIdSets, type OwnSet, validateOwnSet } from "./own-set.ts";
 import { answerDifference, type Kind, PROBES, type ProbeMaterial, whyNoProbe } from "./probes.ts";
 import type { NodeCall } from "./trace.ts";
 
@@ -89,7 +90,14 @@ export type EndpointSpec = {
   unaskable?: (given: Given) => string | null;
 };
 
-export type Level = "responds" | "schema" | "filled" | "mapping" | "sameness" | "material";
+export type Level =
+  | "responds"
+  | "schema"
+  | "filled"
+  | "mapping"
+  | "sameness"
+  | "material"
+  | "answer-key";
 export type Finding = { user: string; url: string; level: Level; message: string };
 
 /** An address that was rightly not put to someone, and why. Counted and printed, never silent. */
@@ -154,6 +162,10 @@ function schemaValidators(): Map<string, ValidateFunction> {
 // ajv's error list is long. Only the first few go into the report — one is enough to see where the drift is,
 // and carrying all of them makes a report nobody reads.
 const ERRORS_SHOWN = 4;
+
+const rec = (value: unknown): Record<string, unknown> =>
+  value !== null && typeof value === "object" ? (value as Record<string, unknown>) : {};
+const arrOf = (value: unknown): unknown[] => (Array.isArray(value) ? value : []);
 const sayErrors = (validate: ValidateFunction): string => {
   const all = validate.errors ?? [];
   const shown = all
@@ -209,7 +221,21 @@ export function describeCoverage(): {
 
 // ── Running ──────────────────────────────────────────────────────────────────────
 
-export async function runCheck(users: readonly CheckUser[], now: Now): Promise<CheckReport> {
+/**
+ * **The second recording, asked of the node without going through us** (check/own-set.ts).
+ *
+ * Every level above it reads the node's answer to *our* question. When the application asks for too little,
+ * the tape holds too little, replay serves too little, and every one of them agrees. This is the only input
+ * to the check that was not produced by asking the way the product asks — which is exactly why it can say
+ * "the node says this person can see a contract that is not in our answer".
+ */
+export type AnswerKey = { own: OwnSet; tapeOffset: number };
+
+export async function runCheck(
+  users: readonly CheckUser[],
+  now: Now,
+  answerKey?: AnswerKey,
+): Promise<CheckReport> {
   const validators = schemaValidators();
   const findings: Finding[] = [];
   const notAsked: NotAsked[] = [];
@@ -507,6 +533,66 @@ export async function runCheck(users: readonly CheckUser[], now: Now): Promise<C
     }
   }
 
+  // ⑦ **Set beside what the node said, asked without going through us.**
+  //
+  // The direction that matters is `missing`: the node says this person can see it and our answer does not.
+  // Nothing else in this check can see that — a narrowed question produces a smaller tape, a smaller answer
+  // and a smaller expectation, all agreeing. `extra` is the other direction and is worse: something in our
+  // answer the node never said they could see.
+  if (answerKey !== undefined) {
+    for (const problem of validateOwnSet(answerKey.own, answerKey.tapeOffset)) {
+      // **A bad answer key is a finding, not a skip.** Used anyway it turns a silent hole into a green light.
+      findings.push({
+        user: "(all)",
+        url: "the answer key",
+        level: "answer-key",
+        message: problem,
+      });
+    }
+    for (const sighting of sightings) {
+      const wanted =
+        sighting.label === "/api/contracts (every one)"
+          ? "contractIds"
+          : sighting.label === "/api/updates (every one)"
+            ? "updateIds"
+            : null;
+      if (wanted === null) continue;
+      const entry = answerKey.own.entries.find((one) => one.who === sighting.user);
+      if (entry === undefined) {
+        findings.push({
+          user: sighting.user,
+          url: sighting.label,
+          level: "answer-key",
+          message: "the answer key holds nobody by this name",
+        });
+        continue;
+      }
+      const key = wanted === "contractIds" ? entry.contractIds : entry.updateIds;
+      const idOf = wanted === "contractIds" ? "contractId" : "updateId";
+      const shown = arrOf(rec(sighting.body).rows).map((row) => rec(row)[idOf]);
+      const difference = compareIdSets(
+        key,
+        shown.filter((id): id is string => typeof id === "string"),
+      );
+      for (const id of difference.missing.slice(0, ERRORS_SHOWN)) {
+        findings.push({
+          user: sighting.user,
+          url: sighting.label,
+          level: "answer-key",
+          message: `the node says this person can see ${id} and our answer does not (${difference.missing.length} in total)`,
+        });
+      }
+      for (const id of difference.extra.slice(0, ERRORS_SHOWN)) {
+        findings.push({
+          user: sighting.user,
+          url: sighting.label,
+          level: "answer-key",
+          message: `our answer holds ${id} and the node never said this person could see it (${difference.extra.length} in total)`,
+        });
+      }
+    }
+  }
+
   // ⑥ **The material the rules stand on is still there.** Nothing above can see this: a rule about decaying
   // tokens is agreed with perfectly by a ledger that issues none, and so is a rule that was deleted. What is
   // judged here is the recording, not the product — which is why the sentence says so.
@@ -538,7 +624,8 @@ export function formatReport(report: CheckReport): string {
       (report.findings.length === 0
         ? ""
         : ` (answers ${perLevel("responds")} · contract ${perLevel("schema")} · content ${perLevel("filled")}` +
-          ` · rules ${perLevel("mapping")} · sameness ${perLevel("sameness")} · material ${perLevel("material")})`),
+          ` · rules ${perLevel("mapping")} · sameness ${perLevel("sameness")} · material ${perLevel("material")}` +
+          ` · answer key ${perLevel("answer-key")})`),
   );
   for (const f of report.findings) {
     const mark = {
@@ -548,6 +635,7 @@ export function formatReport(report: CheckReport): string {
       mapping: "④",
       sameness: "⑤",
       material: "⑥",
+      "answer-key": "⑦",
     }[f.level];
     lines.push(`  ${mark} ${f.user} ${f.url} — ${f.message}`);
   }

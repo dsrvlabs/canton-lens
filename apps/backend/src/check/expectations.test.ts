@@ -113,8 +113,8 @@ test("the zeros that are right are exactly twenty-three, and every one of them h
 
   const total = Object.values(zeros).reduce((n, list) => n + list.length, 0);
   assert.equal(total, 27, `the legitimate zeros moved: ${JSON.stringify(zeros)}`);
-  // Twelve people × nineteen addresses, less the zeros.
-  assert.equal(12 * 19 - total, 201);
+  // Twelve people × twenty-one addresses, less the zeros.
+  assert.equal(12 * 21 - total, 225);
 });
 
 test("the probes nobody has the material for are these, person by person", () => {
@@ -203,9 +203,9 @@ test("a viewer with no reading scope is served, refused and left unasked in the 
     ],
   );
   for (const n of report.notAsked) assert.ok(n.why.length > 0, `${n.url} has no reason`);
-  // Twelve round-one addresses, plus the five probes that need nothing of this person's own to build:
+  // Fourteen round-one addresses, plus the five probes that need nothing of this person's own to build:
   // three "absent" ids, the offset past the end, and the package that is nobody's.
-  assert.equal(report.asked, 12 + 5, "the twelve round-one addresses were all put to them");
+  assert.equal(report.asked, 14 + 5, "the fourteen round-one addresses were all put to them");
 });
 
 test("describing a person wrongly turns the check red rather than quietly green", async () => {

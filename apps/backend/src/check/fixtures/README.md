@@ -11,12 +11,12 @@ CI has no Canton node. So `run-check.test.ts` stands these files up in the ledge
 
 | | |
 |---|---|
-| Recorded at | 2026-09-18T11:29:29.850Z |
+| Recorded at | 2026-09-18T11:56:07.105Z |
 | Ledger | `http://localhost:7575` (a local dev stack, outside this repo) |
 | Canton version | 3.5.15 |
 | People | alice · bob · carol · nobody · idp · padmin · actor · super* · superplus* · dual · mixed · dave |
 | Ledger end | 263 — the point every answer here was read at |
-| Addresses asked | 352 (everything the check actually asks) |
+| Addresses asked | 376 (everything the check actually asks) |
 
 **Recorded with user tokens.** Recorded with an admin token, the files would hold everything rather than the
 boundary Canton enforces, and then they would be material unrelated to the statement this product exists to
@@ -37,6 +37,7 @@ because reading that from our own list would let an application that drops rows 
 |---|---|
 | `ledger.jsonl` | 477 ledger questions and their answers. One pair per line |
 | `packages/*.bin` | The raw bytes of 32 packages (378 KB) — the input to blueprint reading |
+| `own-set.json` | **The answer key** — every contract and update id the node said each person can see, asked directly with their token, together with the two request bodies that produced them. The only input here not made by asking the way the product asks |
 | `meta.json` | The manifest the test reads — the instant recorded, the Canton version, and per person the party classification their rights imply and whether the seed left them anything to see |
 
 **The test uses `meta.json`'s `recordedAt` as its "now".** Judging expiry hangs on that value, so using the

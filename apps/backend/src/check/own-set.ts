@@ -21,6 +21,15 @@ export type OwnSetEntry = {
   who: string;
   /** The parties named in the request. Empty when asked as a super reader, which names none. */
   parties: string[];
+  /**
+   * **This person holds no reading scope at all**, so there is no question to ask: the node reads nothing
+   * for them and both lists are empty because there is nothing, not because the recorder gave up.
+   *
+   * It is a state of its own rather than an empty recording. Left out, a person with no rights looks exactly
+   * like a recording whose question was narrowed to nothing — which is the failure this file exists to
+   * catch, and reporting it here would train a reader to ignore it (2026-09-18).
+   */
+  readsNothing?: boolean;
   /** True when the request used `filtersForAnyParty` — the only shape that may name no party. */
   askedAsAnyParty: boolean;
   /**
@@ -117,6 +126,19 @@ export function validateOwnSet(own: OwnSet, tapeOffset: number): string[] {
   }
   if (own.entries.length === 0) problems.push("the answer key holds nobody");
   for (const entry of own.entries) {
+    if (entry.readsNothing === true) {
+      // Nothing was asked, so there is no question to judge — only that nothing came back either. A person
+      // who reads nothing and yet has ids beside their name is a recording that cannot be true.
+      if (entry.contractIds.length > 0 || entry.updateIds.length > 0) {
+        problems.push(
+          `${entry.who}: holds no reading scope and yet the answer key lists ids for them`,
+        );
+      }
+      if (entry.parties.length > 0 || entry.askedAsAnyParty) {
+        problems.push(`${entry.who}: holds no reading scope and yet a question was recorded`);
+      }
+      continue;
+    }
     if (!contractsAskedEverything(entry.asked.contracts)) {
       problems.push(
         `${entry.who}: the contracts question was narrowed — it must be a wildcard filter`,

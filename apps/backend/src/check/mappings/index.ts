@@ -31,6 +31,9 @@ export const MAPPINGS: Record<string, Mapping<CheckContext>> = {
   // The same rules, asked once more with the cursor the small page handed back. One address, two questions —
   // and the second is the only one where a cursor that does not advance shows up at all.
   "/api/contracts (the second page)": contractsMapping,
+  // The same rules again, asked for the whole list — the page size is read off the address, so nothing in
+  // them changes. What this address exists for is the answer key (check/own-set.ts).
+  "/api/contracts (every one)": contractsMapping,
   "/api/contracts/{contractId}": contractDetailMapping,
   "/api/catalog/packages": packagesCatalogMapping,
   "/api/catalog/templates": templatesCatalogMapping,
@@ -44,6 +47,7 @@ export const MAPPINGS: Record<string, Mapping<CheckContext>> = {
   "/api/search": searchMapping,
   "/api/session": sessionMapping,
   "/api/updates": updatesMapping,
+  "/api/updates (every one)": updatesMapping,
   // The same rules answer both addresses: they differ only in how the update was named, and what an update
   // *is* cannot depend on that.
   "/api/updates/{updateId}": updateDetailMapping,
