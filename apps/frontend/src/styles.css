@@ -627,10 +627,10 @@
 }
 /* The one control a reader reaches for on every row, so it is the larger of the two. */
 .tx-caret--more {
-  width: 30px;
-  height: 30px;
-  margin: -8px 0;
-  font-size: 14px;
+  width: 34px;
+  height: 34px;
+  margin: -10px 0;
+  font-size: 17px;
 }
 .tx-caret--none {
   cursor: default;
