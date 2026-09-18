@@ -13,6 +13,7 @@ import { offersMapping } from "./offers.ts";
 import { packagesCatalogMapping } from "./packages-catalog.ts";
 import { partyMapping } from "./party.ts";
 import { preapprovalsMapping } from "./preapprovals.ts";
+import { searchMapping } from "./search.ts";
 import { sessionMapping } from "./session.ts";
 import { templatesCatalogMapping } from "./templates-catalog.ts";
 import { timelineMapping } from "./timeline.ts";
@@ -32,6 +33,7 @@ export const MAPPINGS: Record<string, Mapping<CheckContext>> = {
   "/api/node": nodeMapping,
   "/api/party/{partyId}": partyMapping,
   "/api/preapprovals": preapprovalsMapping,
+  "/api/search": searchMapping,
   "/api/session": sessionMapping,
   "/api/updates": updatesMapping,
   "/api/timeline": timelineMapping,
