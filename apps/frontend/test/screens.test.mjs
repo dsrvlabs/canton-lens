@@ -451,11 +451,18 @@ test("parties: every party of mine is drawn with the rights it carries", async (
   const session = await answer("/api/session");
   assert.equal(session.outcome, "view");
   const html = draw(PartiesView, { session, loading: false });
-  // ⑦ — **the capacities too.** A list of party names with the rights column removed is a different
-  // statement: "these are yours" rather than "these are yours, and this is how" (2026-09-18 codex).
+  // ⑦ — **the capacities too**, and in the column that draws them rather than anywhere in the row. Asked
+  // for the raw names anywhere, this passed on the "Raw rights" JSON dump sitting in the third cell while
+  // the badges were gone — a false pass of exactly the kind this scoping exists to stop (2026-09-18 codex).
+  const inWords = { CanActAs: "Can act as", CanReadAs: "Can read as" };
   for (const p of session.parties) {
     const row = rowShowing(html, shortParty(p.party));
-    shows(row, p.kinds, `the row for ${shortParty(p.party)} does not say what it may do`);
+    const permissions = row.split('class="party-permissions"')[1]?.split("</div>")[0] ?? "";
+    shows(
+      permissions,
+      p.kinds.map((kind) => inWords[kind]),
+      `the row for ${shortParty(p.party)} does not say what it may do`,
+    );
   }
   // The seed holds one party carrying both capacities and one person holding two parties — the two shapes
   // a list of names alone cannot tell apart.
