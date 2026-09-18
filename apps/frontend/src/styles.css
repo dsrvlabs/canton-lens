@@ -509,8 +509,9 @@
      single unbroken run (a contract id) is cut through. "controller" stays "controller". */
   overflow-wrap: break-word;
 }
+/* The chevron stands in the middle of its column, not on the table's edge. */
 .tx-cell--end {
-  text-align: right;
+  text-align: center;
 }
 .tx-lead {
   display: flex;
@@ -566,8 +567,12 @@
   color: var(--clds-color-ink);
   background: var(--clds-color-field);
 }
+/* The one control a reader reaches for on every row, so it is the larger of the two. */
 .tx-caret--more {
-  font-size: 12px;
+  width: 30px;
+  height: 30px;
+  margin: -8px 0;
+  font-size: 14px;
 }
 .tx-caret--none {
   cursor: default;
@@ -614,8 +619,11 @@
    ordinal column, so it reads as belonging to the row above rather than as another row of the table.
    **The child combinator is load-bearing**: these cells hold tables of their own (the typed payload), and a
    descendant selector put this row's inset on every cell inside them — 62px of padding per field. */
+/* An open row keeps a line under it. It used to be dropped so the row and its details read as one block, but
+   with the details set on their own ground the only thing that went was the boundary between what the row
+   says and what it opened. */
 .clds-table > tbody > tr.tx-event--open > td {
-  border-bottom: 0;
+  border-bottom: 1px solid var(--clds-color-rule);
 }
 .clds-table > tbody > tr.tx-args > td {
   padding-top: 0;

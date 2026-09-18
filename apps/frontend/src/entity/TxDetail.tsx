@@ -406,7 +406,9 @@ function Events({ v }: { v: Tx }) {
                 {/* Where the reader stands. A column of its own, because "and me?" is asked down the table
                     rather than of one row at a time. */}
                 <col style={{ width: 108 }} />
-                <col style={{ width: 36 }} />
+                {/* The chevron's column. Wide enough that the control sits in a column of its own rather than
+                    against the table's edge. */}
+                <col style={{ width: 56 }} />
               </colgroup>
               <tbody>
                 <tr>
