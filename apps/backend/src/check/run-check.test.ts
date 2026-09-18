@@ -22,7 +22,7 @@ import { matchRoute, ROUTES } from "../routes.ts";
 import { ROUND_ONE, ROUND_TWO } from "./expectations.ts";
 import { type Given, partiesFromRights } from "./given.ts";
 import { fakeTokenFor, parseTape, replaySend, tapeKey } from "./ledger-tape.ts";
-import { type AnyRule, coverage, differences } from "./mapping.ts";
+import { type AnyRule, coverage, differences, inlineShapes } from "./mapping.ts";
 import { MAPPINGS } from "./mappings/index.ts";
 import { type Ask, describeCoverage, formatReport, nowFrom, runCheck } from "./run-check.ts";
 import { tracingSend } from "./trace.ts";
@@ -227,32 +227,63 @@ test("the router, openapi and the check table name the same addresses", () => {
     [],
     "the router answers these but openapi does not declare them — undocumented and unchecked",
   );
+  assert.deepEqual(
+    coverage.askedButUndocumented,
+    [],
+    "the check table asks for these and openapi declares none of them",
+  );
   assert.equal(
-    coverage.routerPaths.length,
+    coverage.routerOperations.length,
     17,
-    "the number of addresses the router answers changed",
+    "the number of operations the router answers changed",
   );
   // The templates are compared character for character on purpose — `{updateId}` against `{updateId}`. A
   // translation between the two notations would be a place for them to drift while this stays green.
-  assert.deepEqual(
-    [...coverage.routerPaths].sort(),
-    [...new Set(coverage.openApiOperations.map((n) => n.slice(n.indexOf(" ") + 1)))].sort(),
-  );
+  assert.deepEqual([...coverage.routerOperations].sort(), [...coverage.openApiOperations].sort());
 });
+
+/** One real-looking address for a template — `/api/updates/{updateId}` becomes `/api/updates/1220ff`. */
+const filled = (template: string): string =>
+  template
+    .replace("{contractId}", "00abc")
+    .replace("{partyId}", "alice::1220")
+    .replace("{updateId}", "1220ff")
+    .replace("{offset}", "168")
+    .replace("{packageId}", "a".repeat(64));
 
 test("every address in the route list matches its own template, and nothing else's", () => {
   // The list is only a set of addresses if each pattern recognises the path its template names. A typo in a
   // pattern would otherwise be invisible: the template would still be counted, and the path would 404.
   for (const route of ROUTES) {
-    const example = route.template
-      .replace("{contractId}", "00abc")
-      .replace("{partyId}", "alice::1220")
-      .replace("{updateId}", "1220ff")
-      .replace("{offset}", "168")
-      .replace("{packageId}", "a".repeat(64));
+    const example = filled(route.template);
     const found = matchRoute(example);
     assert.equal(found?.template, route.template, `${example} should be ${route.template}`);
   }
+  // **And rejects what its template does not name.** One positive example per route says the pattern is not
+  // a typo; it does not say the pattern is not *wider* than the address. Dropping a single `$` turned
+  // `/api/session` into a prefix and made `/api/session-anything` an undocumented alias of it, with every
+  // test still green (2026-09-18 codex).
+  for (const route of ROUTES) {
+    const example = filled(route.template);
+    // A route with a `{parameter}` legitimately takes any one segment there, so `…/00abcx` is simply
+    // another contract id. What no route may take is **an extra segment** or **anything in front**; and a
+    // route with no parameter at all may take nothing appended either. It may well be *another* route
+    // (`/api/contracts/more` is a contract id) — it must not be this one.
+    const takesNoParameter = !route.template.includes("{");
+    const wider = [
+      `${example}/more`,
+      `x${example}`,
+      ...(takesNoParameter ? [`${example}x`, `${example}-anything`] : []),
+    ];
+    for (const path of wider) {
+      assert.notEqual(
+        matchRoute(path)?.template,
+        route.template,
+        `${path} is not ${route.template} and must not match it`,
+      );
+    }
+  }
+
   assert.equal(matchRoute("/api/nothing"), null);
   assert.equal(matchRoute("/api/contracts/"), null, "an empty segment is not an address");
   // A package id is a content hash; a path that is not one is not this address (and must not become the
@@ -334,6 +365,30 @@ test("every address has its answer written out again by hand", () => {
     [],
     "these addresses are asked but nobody wrote down what the answer should hold",
   );
+});
+
+test("the shapes with no name of their own are these, and a new one gets looked at", () => {
+  // **Where "every slot has a hand-written rule" stops being true.** A slot whose schema is written inline
+  // in openapi — an object or a union with no name — has nowhere to hang a table, so coverage cannot demand
+  // a sentence for the fields inside it. They are still compared (the parent's rule builds the whole value
+  // and the comparator reads every key) and still validated by level ②, but a new *optional* inline field
+  // could arrive, never appear in the fixture, and nobody would be asked to write anything (2026-09-18
+  // codex). Naming the type in responses.ts or in core moves the shape back under the rule; until then it
+  // is listed here, so a new one is an edit somebody reviews.
+  const found: string[] = [];
+  for (const [address, mapping] of Object.entries(MAPPINGS)) {
+    for (const where of inlineShapes(mapping)) found.push(`${address} ${where}`);
+  }
+  assert.deepEqual([...new Set(found)].sort(), [
+    // `VisibilityExplanation | { status: "not_asked" }`. The named half has a table; the inline half is a
+    // branch the router cannot produce, because it always passes the viewer's parties.
+    "/api/contracts/{contractId} ContractDetailResponse.visibility",
+    // Three slots: userId, partyCount, scope. The mapping has a table for it; openapi has no name.
+    "/api/home HomeResponse.viewer",
+    // The three-way ok · no_party_found · no_own_parties union, built by hand in the parent's rule.
+    "/api/updates/by-offset/{offset} UpdateDetailResponse(transaction).visibility",
+    "/api/updates/{updateId} UpdateDetailResponse(transaction).visibility",
+  ]);
 });
 
 test("the slots no mapping judges are these, and nobody adds one quietly", () => {

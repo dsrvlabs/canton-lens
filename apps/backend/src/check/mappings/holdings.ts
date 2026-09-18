@@ -114,6 +114,10 @@ const HOLDING_GROUP: Record<string, Rule<Group>> = {
   ),
 };
 
+// **No recorded answer holds a problem.** Every seeded Holding reads cleanly, so the four ways a contract
+// becomes a problem rather than a row are stated and never taken. The same is true of offers and of
+// preapprovals. "A contract whose view the node marks failed, or whose payload is the wrong shape" is a data
+// condition the seed owes, and it is the one that decides whether a wrong total or a short total goes out.
 const PROBLEM: Record<string, Rule<{ contractId: string; message: string }>> = {
   contractId: node("contractId"),
   message: app(

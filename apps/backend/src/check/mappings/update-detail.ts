@@ -122,6 +122,8 @@ const VISIBILITY_REASON: Record<string, Rule<Reason>> = {
     "signatory and observer where that party is among them, in that order; witness only when it is neither and the node lists it as a witness — a stakeholder is not also reported as a witness",
     (r) => r.roles,
   ),
+  // The observer role is never taken in the tape: every party of mine that appears in an opened update is a
+  // signatory or a witness. One more data condition the seed owes (2026-09-18 codex).
   eventIndexes: app(
     "which events of this transaction it appears in, by position, in order — one entry per appearance",
     (r) => r.eventIndexes,
@@ -183,6 +185,10 @@ const TRANSACTION: Record<string, Rule<Answer>> = {
   readAt: app("the instant the check handed the server as its clock", (a) => a.ctx.now.iso),
 };
 
+// **Only the transaction branch is exercised.** The tape holds no reassignment, topology change or
+// checkpoint at a point lookup, so this branch is declared and never built (2026-09-18 codex). Seeding one
+// means a reassignment between synchronizers, which the dev stack has only one of — recorded here as owed
+// rather than pretended.
 const NOT_A_TRANSACTION: Record<
   string,
   Rule<{ ctx: CheckContext; kind: string; value: Record<string, unknown> }>

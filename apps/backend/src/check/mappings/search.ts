@@ -88,20 +88,20 @@ const SECTION_UNAVAILABLE: SlotTable = {
   reason: app("why, by name", (s: { reason: string }) => s.reason),
 } as SlotTable;
 
-const NOT_APPLICABLE: SlotTable = {
+const NOT_APPLICABLE: Record<string, Rule<unknown>> = {
   status: app(
     "not_applicable — this kind of input is not looked up here at all. It is not an empty result: nobody asked",
     () => "not_applicable",
   ),
-} as SlotTable;
+};
 
 /** Every section is the same three-way choice; only what a row is differs. */
 const sectionOf = (rows: SlotTable): Branches => ({
   by: "status",
   of: [
     { when: ["ok"], slots: rows },
-    { when: ["unavailable"], slots: SECTION_UNAVAILABLE },
-    { when: ["not_applicable"], slots: NOT_APPLICABLE },
+    { when: ["unavailable"], slots: SECTION_UNAVAILABLE as SlotTable },
+    { when: ["not_applicable"], slots: NOT_APPLICABLE as SlotTable },
   ],
 });
 

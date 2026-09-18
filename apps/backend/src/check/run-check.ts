@@ -13,7 +13,8 @@
 import type { ValidateFunction } from "ajv";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import { openApiDocument } from "../openapi.ts";
-import { routeTemplates } from "../routes.ts";
+import { routeOperations } from "../routes.ts";
+import { questionProblems } from "./asked-well.ts";
 import { type Harvest, harvest, ROUND_ONE, ROUND_TWO } from "./expectations.ts";
 import type { Given } from "./given.ts";
 import { checkPages, differences } from "./mapping.ts";
@@ -162,14 +163,16 @@ export function describeCoverage(): {
   /** Every operation openapi declares, as `"GET /api/session"`. */
   openApiOperations: string[];
   checkedOperations: string[];
-  /** Every address the router recognises, as an openapi path template. */
-  routerPaths: string[];
+  /** Every operation the router answers, as `"GET /api/session"`. */
+  routerOperations: string[];
   missingFromCheck: string[];
   withoutValidator: string[];
   /** Declared in openapi, not recognised by the router — the document promises an address that 404s. */
   missingFromRouter: string[];
   /** Answered by the router, absent from openapi — an address nobody agreed to and nothing describes. */
   undocumented: string[];
+  /** In the check table, absent from openapi — the table asks for something nothing describes. */
+  askedButUndocumented: string[];
 } {
   const validators = schemaValidators();
   const all = operations();
@@ -178,16 +181,22 @@ export function describeCoverage(): {
     [...ROUND_ONE, ...ROUND_TWO].map((spec) => operationName("GET", spec.template)),
   );
   const names = all.map((o) => operationName(o.method, o.path));
-  const documented = new Set(all.map((o) => o.path));
-  const answered = new Set(routeTemplates());
+  // **Compared as operations, not as paths.** A method is half of what an address is: without it, a POST
+  // added to the document could never be reported as missing from the router, because the router's side of
+  // the comparison could not say what it answers.
+  const documented = new Set(names);
+  const answered = new Set(routeOperations());
   return {
     openApiOperations: names,
     checkedOperations: [...covered],
-    routerPaths: [...answered],
+    routerOperations: [...answered],
     missingFromCheck: names.filter((n) => !covered.has(n)),
     withoutValidator: names.filter((n) => !validators.has(n)),
-    missingFromRouter: [...documented].filter((p) => !answered.has(p)),
-    undocumented: [...answered].filter((p) => !documented.has(p)),
+    missingFromRouter: [...documented].filter((n) => !answered.has(n)),
+    undocumented: [...answered].filter((n) => !documented.has(n)),
+    // The fourth direction. An entry in the table naming something openapi does not declare would otherwise
+    // only show up as a failure when asked — and on a person who is not asked it, not at all.
+    askedButUndocumented: [...covered].filter((n) => !documented.has(n)),
   };
 }
 
@@ -206,6 +215,7 @@ export async function runCheck(users: readonly CheckUser[], now: Now): Promise<C
   //   openapi \ check     — an operation was added to the contract and nothing ever asks for it
   //   openapi \ router    — the document promises an address that answers 404
   //   router \ openapi    — the application answers at an address nothing describes and nothing checks
+  //   check \ openapi     — the table asks for something nothing describes
   //
   // The contract stays the source of truth: neither the table nor the router adjusts itself to the others.
   const coverage = describeCoverage();
@@ -233,6 +243,15 @@ export async function runCheck(users: readonly CheckUser[], now: Now): Promise<C
       level: "filled",
       message:
         "answered by the router (routes.ts) but absent from openapi — undocumented, unchecked",
+    });
+  }
+  for (const name of coverage.askedButUndocumented) {
+    findings.push({
+      user: "(all)",
+      url: name,
+      level: "filled",
+      message:
+        "in the check table (expectations.ts) but absent from openapi — nothing describes it",
     });
   }
 
@@ -324,6 +343,14 @@ export async function runCheck(users: readonly CheckUser[], now: Now): Promise<C
         const empty = spec.filled(body, user.given);
         if (empty !== null) {
           findings.push({ user: user.name, url, level: "filled", message: empty });
+        }
+
+        // ④-a **The question was the right one.** Before judging what we did with the node's answer, judge
+        // what we asked for: a request that names fewer parties than this person holds, or reads at some
+        // other moment, or looks up some other update, produces a smaller or wrong answer that every
+        // level below would then agree with perfectly. This runs for every address, mapped or not.
+        for (const problem of questionProblems(url, ledger, user.given)) {
+          findings.push({ user: user.name, url, level: "mapping", message: problem });
         }
 
         // ④ Every value in it came from somewhere. The rules for this address (check/mappings/) build the

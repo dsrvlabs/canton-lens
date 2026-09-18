@@ -219,7 +219,18 @@ export const timelineMapping: Mapping<CheckContext> = {
           const into = created !== undefined ? born : died;
           const before = into.get(contractId);
           if (before === undefined || at.offset < before.offset) into.set(contractId, at);
-          if (!seenAs.has(contractId)) {
+          // **A creation is the better of the two events, and it is not the one seen first.** The node's
+          // pages run oldest-first here, but the product reads the window newest-first, so for a contract
+          // created and archived inside one window the archive is what it meets first — and an archive
+          // carries no signatories or observers. Whichever order the material arrives in, the creation is
+          // the event that knows the stakeholders, so it is the one that wins.
+          //
+          // **The tape does not hold such a lifecycle**, which is exactly why this was worth writing: for a
+          // while the product had this wrong, the fix went in, and this restatement still said the old
+          // thing. Both were green. "A contract created and archived inside one window" joins the data
+          // conditions the seed owes.
+          const already = seenAs.get(contractId);
+          if (already === undefined || (created !== undefined && already.parties.length === 0)) {
             seenAs.set(contractId, {
               package: parts[0],
               packageName: null,

@@ -68,6 +68,11 @@ const TOKEN_CLAIMS: Record<string, Rule<Record<string, unknown>>> = {
   ),
 };
 
+// **CI does not exercise these three.** The tape's stand-in tokens are not JWTs, so the check hands in
+// `callerToken: null` and this whole table is skipped; replacing the product's `readTokenClaims` with `null`
+// leaves the suite green (2026-09-18 codex). A live run against a participant does exercise it — the twelve
+// people there carry real Keycloak tokens, and that run is green too. Either the fixture grows a decodable
+// stand-in token, or this rule is a live-only rule and should say so out loud. It says so here.
 /** The three claims, or null when the caller's token was not a decodable JWT. */
 const tokenOf = (ctx: CheckContext): unknown =>
   ctx.callerToken === null ? null : buildObject(TOKEN_CLAIMS, ctx.callerToken);

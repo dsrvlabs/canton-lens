@@ -219,6 +219,70 @@ const sameSet = (a: readonly string[], b: readonly string[]): boolean =>
   a.length === b.length && [...a].sort().join("\u0000") === [...b].sort().join("\u0000");
 
 // Takes the declaration part only, so any mapping can be handed to it whatever its context type.
+/**
+ * **The shapes coverage cannot demand a sentence for.** A slot whose schema is written *inline* in openapi —
+ * an object or a union with no name of its own — has no place to hang a table, so no rule is required for
+ * the fields inside it. They are still compared (the parent's rule builds the whole value and `differences`
+ * reads every key) and still validated (level ②), but "every slot has a hand-written rule" stops being true
+ * at that boundary: a new *optional* field could be added inline, never appear in the fixture, and nobody
+ * would be asked to write anything.
+ *
+ * So the boundary is listed instead of assumed. A test pins this list; naming the shape in openapi is what
+ * moves it back under the rule.
+ */
+export function inlineShapes(mapping: { root: string; slots: Record<string, Table> }): string[] {
+  const found: string[] = [];
+  const seen = new Set<string>();
+  const scan = (where: string, value: unknown, depth: number): void => {
+    if (value === null || typeof value !== "object" || depth > 8) return;
+    if (refName(value) !== null) return;
+    const node = value as Record<string, unknown>;
+    const union = (node.anyOf ?? node.oneOf) as unknown[] | undefined;
+    // Only a shape that actually carries slots counts. `X | null` and `string[] | null` carry none: the
+    // first is a named schema reached under its own name, the second has no fields to write a rule for.
+    const unionHasSlots =
+      union !== undefined &&
+      union.some((branch) => (branch as { properties?: unknown }).properties !== undefined);
+    if (node.properties !== undefined || unionHasSlots) {
+      if (!seen.has(where)) {
+        seen.add(where);
+        found.push(where);
+      }
+      return;
+    }
+    if (union !== undefined) {
+      for (const [index, branch] of union.entries()) scan(`${where}[${index}]`, branch, depth + 1);
+      return;
+    }
+    for (const [key, child] of Object.entries(node)) scan(`${where}.${key}`, child, depth + 1);
+  };
+  for (const [name, table] of Object.entries(mapping.slots)) {
+    const schema = schemas[name];
+    if (schema === undefined) continue;
+    const branches = table as Branches;
+    const tables: [string, SlotTable][] =
+      typeof branches.by === "string" && Array.isArray(branches.of)
+        ? branches.of.map((entry) => [`${name}(${entry.when.join("|")})`, entry.slots])
+        : [[name, table as SlotTable]];
+    const shapes: Record<string, unknown>[] = [];
+    if (schema.properties !== undefined) shapes.push(schema.properties as Record<string, unknown>);
+    for (const branch of ((schema.anyOf ?? schema.oneOf) as unknown[] | undefined) ?? []) {
+      const properties = (branch as { properties?: Record<string, unknown> }).properties;
+      if (properties !== undefined) shapes.push(properties);
+    }
+    for (const [where, slots] of tables) {
+      for (const properties of shapes) {
+        for (const [slot, shape] of Object.entries(properties)) {
+          const rule = slots[slot];
+          if (rule === undefined || rule.origin === "unjudged") continue;
+          scan(`${where}.${slot}`, shape, 0);
+        }
+      }
+    }
+  }
+  return found.sort();
+}
+
 export function coverage(mapping: {
   root: string;
   slots: Record<string, Table>;
