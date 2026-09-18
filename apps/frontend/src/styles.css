@@ -568,6 +568,29 @@
 .tx-event--clickable {
   cursor: pointer;
 }
+/* Which cut the table is read by. The one in use is the heavier of the two — it is a statement about what
+   you are looking at, not a control that has been taken away. */
+.tx-cut[aria-pressed="true"] {
+  color: var(--clds-color-ink);
+  font-weight: var(--clds-weight-bold);
+}
+
+/* The head of a witness group under the views cut — the line where Canton would cut a view. It is a band
+   across the table rather than a row of cells, because what it names belongs to all of them. */
+.clds-table > tbody > tr.tx-view > td {
+  padding-top: var(--clds-space-6);
+  padding-bottom: var(--clds-space-3);
+  border-bottom: 1px solid var(--clds-color-rule);
+  background: var(--clds-color-field);
+}
+.tx-view__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--clds-space-3);
+  font-size: var(--clds-text-note);
+}
+
 /* The detail row — everything about one event that its line could not hold. It is inset to the width of the
    ordinal column, so it reads as belonging to the row above rather than as another row of the table.
    **The child combinator is load-bearing**: these cells hold tables of their own (the typed payload), and a

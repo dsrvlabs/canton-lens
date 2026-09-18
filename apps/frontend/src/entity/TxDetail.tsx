@@ -2,6 +2,8 @@
 // window as long as the participant keeps it; a pruned past the server names pruned. Arguments are Raw
 // JSON from here on — the decoder is "more human words", not a precondition for showing them. The
 // signed hash is not shown merged with the update id (it gets its own row).
+
+import { groupUpdateViews, type UpdateViewGroup } from "@canton-lens/core";
 import {
   Badge,
   Banner,
@@ -238,6 +240,16 @@ function Events({ v }: { v: Tx }) {
   const lensDivulged =
     lens === null ? 0 : v.events.filter((e) => (e.divulgedTo ?? []).includes(lens)).length;
 
+  // Which cut the rows are read by. "tree" is the transaction as the node sent it; "views" cuts it where the
+  // set of parties changes, which is where Canton cuts a transaction into views and encrypts each one to its
+  // own informees. What this can claim about that is in groupUpdateViews (core) and said under the table.
+  const [cut, setCut] = useState<"tree" | "views">("tree");
+  const groups = groupUpdateViews(v.events);
+  const groupOfEvent: number[] = [];
+  groups.forEach((group, index) => {
+    for (const event of group.eventIndexes) groupOfEvent[event] = index;
+  });
+
   const ancestorsOf = (i: number): number[] => {
     const chain: number[] = [];
     for (let at = v.events[i]?.tree.ancestorIndex ?? null; at !== null; )
@@ -261,12 +273,54 @@ function Events({ v }: { v: Tx }) {
       return next;
     });
 
+  // What the table prints, in order: the events a fold has not hidden, and — under the views cut — a head
+  // wherever the group changes. A group is a region of the tree, so the events in it need not be next to one
+  // another; where one resumes after another the head says so rather than pretending it is a new one.
+  type Row = { kind: "event" | "group"; at: number; group: number; again: boolean };
+  const rows: Row[] = [];
+  const opened = new Set<number>();
+  let printing: number | null = null;
+  v.events.forEach((_, i) => {
+    if (ancestorsOf(i).some((a) => folded.has(a))) return;
+    const group = groupOfEvent[i] ?? 0;
+    if (cut === "views" && group !== printing) {
+      rows.push({ kind: "group", at: i, group, again: opened.has(group) });
+      opened.add(group);
+      printing = group;
+    }
+    rows.push({ kind: "event", at: i, group, again: false });
+  });
+
   return (
     <Section
       id="tx-events"
       title="Events"
       note={
         <>
+          {n > 1 ? (
+            <>
+              {/* Not disabled when it is the one in use: a disabled control is drawn as the one you cannot
+                  have, and here it is the one you are looking at. aria-pressed says which, and so does the
+                  weight. */}
+              <Button
+                variant="plain"
+                className="tx-cut"
+                aria-pressed={cut === "tree"}
+                onClick={() => setCut("tree")}
+              >
+                Tree
+              </Button>{" "}
+              <Button
+                variant="plain"
+                className="tx-cut"
+                aria-pressed={cut === "views"}
+                onClick={() => setCut("views")}
+              >
+                Views
+              </Button>{" "}
+              ·{" "}
+            </>
+          ) : null}
           {withChildren.length > 0 ? (
             <>
               <Button
@@ -352,18 +406,26 @@ function Events({ v }: { v: Tx }) {
                   <th>Witnesses</th>
                   <th />
                 </tr>
-                {v.events.map((e, i) =>
-                  ancestorsOf(i).some((a) => folded.has(a)) ? null : (
+                {rows.map((row) =>
+                  row.kind === "group" ? (
+                    <ViewGroupRow
+                      key={`group-${row.at}`}
+                      group={groups[row.group] as UpdateViewGroup}
+                      n={row.group + 1}
+                      again={row.again}
+                    />
+                  ) : (
                     <EventRow
                       // An event's identity is its index (#) within the update — the screen writes that number too.
-                      // biome-ignore lint/suspicious/noArrayIndexKey: the index is the name
-                      key={i}
-                      e={e}
-                      i={i}
-                      folded={folded.has(i)}
-                      lit={lit.includes(i)}
-                      dim={lens !== null && !(e.witnessParties ?? []).includes(lens)}
-                      onToggle={() => toggle(i)}
+                      key={`event-${row.at}`}
+                      e={v.events[row.at] as TxEvent}
+                      i={row.at}
+                      folded={folded.has(row.at)}
+                      lit={lit.includes(row.at)}
+                      dim={
+                        lens !== null && !(v.events[row.at]?.witnessParties ?? []).includes(lens)
+                      }
+                      onToggle={() => toggle(row.at)}
                       onHover={setHovered}
                     />
                   ),
@@ -373,6 +435,20 @@ function Events({ v }: { v: Tx }) {
           </Scroll>
         </>
       )}
+      {cut === "views" ? (
+        <SectionBody>
+          <Muted>
+            Cut where the set of parties changes. That is where Canton cuts a transaction into{" "}
+            <b>views</b> — regions whose informees are the same — and encrypts each one to those
+            parties alone, which is how the privacy above is enforced rather than promised.{" "}
+            <b>This is not the participant's own decomposition.</b> A view is cut on each node's own
+            informees; the events here carry <i>cumulative</i> informees (the node's and every
+            ancestor's), and an exercise's own set never arrives at all, so where the two differ
+            this cut is the coarser one. It is also cut out of what you received, not out of the
+            transaction.
+          </Muted>
+        </SectionBody>
+      ) : null}
       {nested ? (
         <SectionBody>
           <Muted>
@@ -385,6 +461,33 @@ function Events({ v }: { v: Tx }) {
         </SectionBody>
       ) : null}
     </Section>
+  );
+}
+
+// The head of a group of events that went to the same parties. It is where a **view** boundary falls: Canton
+// cuts a transaction into regions whose informee set is the same and encrypts each region to those parties
+// alone. What is printed here is that cut as far as this response can show it — see groupUpdateViews (core).
+//
+// A group is a region of the tree, not a run of rows, so it can resume after another group has been printed;
+// the head says "again" rather than numbering the same region twice.
+function ViewGroupRow({ group, n, again }: { group: UpdateViewGroup; n: number; again: boolean }) {
+  const count = group.eventIndexes.length;
+  return (
+    <tr className="tx-view">
+      <td colSpan={6}>
+        <div
+          className="tx-view__head"
+          style={{ paddingInlineStart: Math.min(group.depth, INDENT_LEVELS) * INDENT_STEP }}
+        >
+          <b>view {n}</b>
+          {again ? <Muted>continued</Muted> : null}
+          <Muted>
+            {count} event{count === 1 ? "" : "s"} ·
+          </Muted>
+          <PartyList values={group.witnesses} />
+        </div>
+      </td>
+    </tr>
   );
 }
 
