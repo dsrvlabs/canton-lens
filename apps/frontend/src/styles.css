@@ -533,6 +533,17 @@
    A row is joined to the one it hangs from by a line. The rails are drawn against the cell, not inside the
    line of text, so each one runs the cell's whole height and meets the rails on the rows above and below —
    which is the difference between a tree and a column of marks that happen to be indented. */
+.tx-events > tbody > tr.tx-event > td {
+  /* A little more air above the line than the table gives by default — the caret and the badge sat on the
+     row's top edge, and on a two-line row the second line made that look like a slip. */
+  padding-top: var(--tx-row-pad);
+}
+.tx-events {
+  --tx-row-pad: 14px;
+  /* Where a rail meets the row: the middle of the caret, which is 24px tall and first on the line. Rows can be
+     one line or two, so this is measured from the top rather than as a share of the height. */
+  --tx-rail-join: calc(var(--tx-row-pad) + 12px);
+}
 .tx-cell--tree {
   position: relative;
   /* Darker than the table's own rules — the rails are the one line here that has to be followed, and at the

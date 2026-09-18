@@ -570,9 +570,12 @@ function YourStanding({ e }: { e: TxEvent }) {
 // name the place exactly, so nothing is lost by stopping the stagger.
 const INDENT_LEVELS = 6;
 const INDENT_STEP = 26;
-// Where a rail is drawn inside its level — the middle of the step, so the elbow's corner sits under the
-// level above it rather than beside it.
-const RAIL_CENTRE = 9;
+// Where a rail is drawn inside its level: under the middle of that level's caret, so a child hangs from the
+// control that revealed it. The caret is 24px wide and first in its line, hence 12; the cell's own padding is
+// added in CSS (calc), so the token stays the one source of that number.
+const RAIL_CENTRE = 12;
+const railLeft = (level: number, fromTableEdge: boolean): string =>
+  `calc(var(--clds-space-8) + ${(fromTableEdge ? ORDINAL_WIDTH : 0) + level * INDENT_STEP + RAIL_CENTRE}px)`;
 // The ordinal column's width, which is also where the tree column's cells begin. The payload row spans the
 // whole table, so its rails are placed from the table's edge and have to skip that column to line up.
 const ORDINAL_WIDTH = 36;
@@ -652,26 +655,40 @@ function EventRow({
           {/* The rails, drawn against the cell rather than inside the line, so they run its whole height and
               meet the ones on the row above and the row below. A row is joined to the one it hangs from by a
               line, not by the eye measuring an indent. */}
-          {rails.map((carriesOn, level) => (
-            <span
-              // biome-ignore lint/suspicious/noArrayIndexKey: the level is the name
-              key={level}
-              aria-hidden="true"
-              className={
-                level === rails.length - 1
-                  ? `tx-rail tx-rail--elbow${carriesOn ? " tx-rail--through" : ""}`
-                  : carriesOn
-                    ? "tx-rail tx-rail--line"
-                    : "tx-rail tx-rail--blank"
-              }
-              style={{ left: level * INDENT_STEP + RAIL_CENTRE }}
-            />
-          ))}
+          {rails.flatMap((carriesOn, level) => {
+            const left = railLeft(level, false);
+            const last = level === rails.length - 1;
+            // The connector into this row, and — where the parent has more children after it — the line that
+            // carries on past it, drawn as its own full-height rail so it reaches the row's edge whatever the
+            // row's height. (A pseudo-element hung off the elbow could only ever be as tall as the elbow.)
+            const marks = [];
+            if (last)
+              marks.push(
+                <span
+                  // biome-ignore lint/suspicious/noArrayIndexKey: the level is the name
+                  key={`${level}-elbow`}
+                  aria-hidden="true"
+                  className="tx-rail tx-rail--elbow"
+                  style={{ left }}
+                />,
+              );
+            if (carriesOn)
+              marks.push(
+                <span
+                  // biome-ignore lint/suspicious/noArrayIndexKey: the level is the name
+                  key={`${level}-line`}
+                  aria-hidden="true"
+                  className="tx-rail tx-rail--line"
+                  style={{ left }}
+                />,
+              );
+            return marks;
+          })}
           {opens ? (
             <span
               aria-hidden="true"
               className="tx-rail tx-rail--down"
-              style={{ left: Math.min(depth, INDENT_LEVELS) * INDENT_STEP + RAIL_CENTRE }}
+              style={{ left: railLeft(Math.min(depth, INDENT_LEVELS), false) }}
             />
           ) : null}
           <div
@@ -774,8 +791,9 @@ function EventRow({
             // The payload stands one level in from its row, past every rail that crosses it — the same place
             // the row's children start — so the lines run beside it rather than through its first letters.
             style={{
-              paddingInlineStart:
-                ORDINAL_WIDTH + (Math.min(depth, INDENT_LEVELS) + 1) * INDENT_STEP + RAIL_CENTRE,
+              paddingInlineStart: `calc(var(--clds-space-8) + ${
+                ORDINAL_WIDTH + (Math.min(depth, INDENT_LEVELS) + 1) * INDENT_STEP
+              }px)`,
             }}
           >
             {/* The payload row stands between an event and the events under it, so the lines cross it. The
@@ -793,7 +811,7 @@ function EventRow({
                     key={level}
                     aria-hidden="true"
                     className="tx-rail tx-rail--line"
-                    style={{ left: ORDINAL_WIDTH + level * INDENT_STEP + RAIL_CENTRE }}
+                    style={{ left: railLeft(level, true) }}
                   />
                 ) : null,
               )}
