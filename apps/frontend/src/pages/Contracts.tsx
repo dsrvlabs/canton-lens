@@ -33,7 +33,7 @@ import { useSession } from "../session/SessionContext.tsx";
 import { pickedTemplate, TEMPLATE_PINNED } from "./template-filter.ts";
 
 type Cursor = NonNullable<ContractsResponse["nextCursor"]>;
-type Page = {
+export type Page = {
   rows: ContractListRow[];
   cursor: Cursor | null;
   total: number;
@@ -42,6 +42,7 @@ type Page = {
   filter: { template?: string; parties?: string[] };
 };
 
+// **The fetching half.** It holds the session, the effect and the answer; it draws nothing.
 export function Contracts({ hash }: { hash: string }) {
   const { api, lastOffset, loading, generation, fail, templates } = useSession();
   // Suggestion material for the filter field — module:entity from my catalog. Typing help, not judgement.
@@ -52,14 +53,6 @@ export function Contracts({ hash }: { hash: string }) {
 
   const [page, setPage] = useState<Page | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [templateInput, setTemplateInput] = useState(template);
-  const [partyInput, setPartyInput] = useState(party);
-  // The fields mirror the address — when the address changed and when everything was re-read.
-  const applied = useMemo(() => ({ template, party, generation }), [template, party, generation]);
-  useEffect(() => {
-    setTemplateInput(applied.template);
-    setPartyInput(applied.party);
-  }, [applied]);
 
   const params = (offset: number, extra: Record<string, string | number | null> = {}) => {
     const p = new URLSearchParams({ pageSize: "25", offset: String(offset) });
@@ -123,6 +116,59 @@ export function Contracts({ hash }: { hash: string }) {
       fail(messageOf(e));
     }
   };
+
+  return (
+    <ContractsView
+      page={page}
+      error={error}
+      hash={hash}
+      templateOptions={templateOptions}
+      generation={generation}
+      onOlder={() => void older()}
+    />
+  );
+}
+
+// **The drawing half — a function of one answer and the address, and nothing else.** No session, no effect,
+// no clock. That is what lets a test hand it the answer a real participant gave and count the rows that come
+// out: joined to the fetching, a static render only ever reaches "Reading contracts…" and the screen itself
+// is never looked at (2026-09-18).
+//
+// The text fields keep their own state here because that is what they are — what is being typed, which is
+// not an answer to anything. They start from the address, which is where the applied filter lives.
+export function ContractsView({
+  page,
+  error,
+  hash,
+  templateOptions = [],
+  generation = 0,
+  onOlder,
+}: {
+  page: Page | null;
+  error: string | null;
+  hash: string;
+  templateOptions?: readonly string[];
+  /**
+   * How many times everything has been re-read. **A draft filter is part of the screen, and Refresh restores
+   * the screen from the address.** The fetching half used to hold these fields, so a re-read reset them; with
+   * them moved here the generation has to come too, or a typed-but-unapplied filter survives a Refresh and
+   * the fields stop agreeing with the list beneath them (2026-09-18 codex).
+   */
+  generation?: number;
+  onOlder?: () => void;
+}) {
+  const q = hashQuery(hash);
+  const template = q.get("template") ?? "";
+  const party = q.get("party") ?? "";
+  const [templateInput, setTemplateInput] = useState(template);
+  const [partyInput, setPartyInput] = useState(party);
+  // The fields mirror the address — when the address changed. Mirroring on every draw would wipe what is
+  // being typed.
+  const applied = useMemo(() => ({ template, party, generation }), [template, party, generation]);
+  useEffect(() => {
+    setTemplateInput(applied.template);
+    setPartyInput(applied.party);
+  }, [applied]);
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -218,7 +264,7 @@ export function Contracts({ hash }: { hash: string }) {
         </Scroll>
         <Pager>
           {page?.cursor ? (
-            <Button size="xs" id="more" onClick={() => void older()}>
+            <Button size="xs" id="more" onClick={onOlder}>
               Older
             </Button>
           ) : null}
