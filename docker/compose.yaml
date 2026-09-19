@@ -34,6 +34,13 @@ services:
         - VITE_OIDC_POST_LOGOUT_REDIRECT_URI
         - VITE_OIDC_SCOPES
         - VITE_OIDC_AUDIENCE
+    # Read at container start by docker/csp-connect-src.envsh, which turns the issuer into the
+    # origin the Content-Security-Policy lets the page connect to. The same value the bundle was
+    # built with above; passed through only when set, so the other profiles allow `'self'` alone.
+    # CSP_CONNECT_SRC, if set in docker/.env, replaces the derived value outright.
+    environment:
+      - VITE_OIDC_ISSUER
+      - CSP_CONNECT_SRC
     # Loopback by default: this server terminates no TLS and enforces no access control, so
     # exposing it directly is a decision the operator makes explicitly in docker/.env.
     ports:
