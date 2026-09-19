@@ -45,6 +45,8 @@ PUBLIC_ENTRY_URL=https://explorer.example/
 The issuer must support OIDC Discovery, PKCE, and browser CORS for the required endpoints. It
 must issue an access token with the audience and claims expected by Canton. Do not configure a
 client secret in the Frontend. Keep every `SHARED_IDENTITY_*` variable unset in this mode.
+The Backend requires HTTPS for a remote `LEDGER_BASE`; HTTP is accepted only on loopback for local
+development.
 
 ### Shared Identity
 

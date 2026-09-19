@@ -24,6 +24,10 @@ The access token stays in Browser memory and is not retained by the Backend. Rel
 another login. Memory-only storage does not protect against XSS; use HTTPS, a Content Security
 Policy, and avoid logging tokens.
 
+The Backend refuses to relay a caller Bearer token to a remote participant over plaintext HTTP.
+HTTPS is required for remote ledger addresses; loopback HTTP remains available for local
+development.
+
 ## Shared Identity
 
 Shared Identity uses one Backend-held credential for every request. It does not authenticate
