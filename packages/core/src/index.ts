@@ -264,6 +264,11 @@ export type {
 } from "./update-detail/build-update-detail.ts";
 export { buildUpdateDetail } from "./update-detail/build-update-detail.ts";
 export type {
+  NestableEvent,
+  UpdateEventPlacement,
+} from "./update-detail/nest-update-events.ts";
+export { nestUpdateEvents } from "./update-detail/nest-update-events.ts";
+export type {
   BuildViewerPartiesResult,
   ViewerPartiesUnavailable,
   ViewerPartiesView,

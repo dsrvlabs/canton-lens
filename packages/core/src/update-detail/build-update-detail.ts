@@ -3,6 +3,10 @@
 // the hash to be signed on a separate row · Submitted by you) · event table (Created / Exercised·consuming · template/choice · arguments as Raw
 // JSON · witnessParties · contract ids linked only for created ones) · “why I can see this” (which events my parties are involved in).
 //
+// The events keep the order the node sent them in — pre-order over the transaction's nodes — and each one carries where it
+// sits in that tree (tree: depth · ancestorIndex · descendantCount, from nest-update-events.ts). The list is not re-sorted
+// and nothing is grouped: a reader who ignores `tree` reads exactly the flat list this returned before.
+//
 // Reassignment is not accepted in v1 — if one arrives via the point lookup, it is not silently skipped; `kind:"reassignment"` says “not in this
 // version” rather than silently skipping it. TopologyTransaction·OffsetCheckpoint are treated the same.
 //
@@ -10,10 +14,16 @@
 import { isRecord, isStringArray } from "../internal/guards.ts";
 import { parseTemplateFqn } from "../template-identifier/parse-template-identifier.ts";
 import { explainVisibility, type VisibilityRole } from "../visibility/explain-visibility.ts";
+import { nestUpdateEvents, type UpdateEventPlacement } from "./nest-update-events.ts";
 
 export type UpdateDetailEvent = {
   kind: "created" | "exercised";
   nodeId: number | null;
+  // exercised only — the last node id of everything that happened under this exercise. Equal to nodeId when
+  // nothing did. A created event has no subtree, so null.
+  lastDescendantNodeId: number | null;
+  // Where this event sits in the tree of the events shown — derived here (nestUpdateEvents), not sent by the node.
+  tree: UpdateEventPlacement;
   contractId: string;
   templateId: string;
   package: string;
@@ -118,7 +128,8 @@ export function buildUpdateDetail(
     return { ok: false, reason: "transaction_shape_mismatch" };
   }
 
-  const events: UpdateDetailEvent[] = [];
+  // The tree placement is read off the whole list, so the events are gathered first and placed after.
+  const drafts: Omit<UpdateDetailEvent, "tree">[] = [];
   for (const rawEvent of value.events) {
     if (!isRecord(rawEvent)) return { ok: false, reason: "event_shape_mismatch" };
     const created = isRecord(rawEvent.CreatedEvent) ? rawEvent.CreatedEvent : null;
@@ -135,9 +146,13 @@ export function buildUpdateDetail(
     const parsed = parseTemplateFqn(source.templateId);
     if (!parsed.ok) return { ok: false, reason: `template_parse_failed:${parsed.reason}` };
     const witnessParties = isStringArray(source.witnessParties) ? source.witnessParties : [];
-    events.push({
+    drafts.push({
       kind: created ? "created" : "exercised",
       nodeId: typeof source.nodeId === "number" ? source.nodeId : null,
+      lastDescendantNodeId:
+        exercised && typeof exercised.lastDescendantNodeId === "number"
+          ? exercised.lastDescendantNodeId
+          : null,
       contractId: source.contractId,
       templateId: source.templateId,
       package: parsed.package_name,
@@ -160,6 +175,13 @@ export function buildUpdateDetail(
       interfaceId: exercised ? str(exercised.interfaceId) : null,
     });
   }
+
+  const placements = nestUpdateEvents(drafts);
+  const events: UpdateDetailEvent[] = drafts.map((draft, index) => ({
+    ...draft,
+    // One placement per event, in the same order — the root is the answer for a list that could not be nested.
+    tree: placements[index] ?? { depth: 0, ancestorIndex: null, descendantCount: 0 },
+  }));
 
   // “Why I can see this” — for each event, ask the role of my parties and gather per party. exercised has no signatories/observers,
   // so witnessParties alone qualifies as the witness role — a witness in LEDGER_EFFECTS is an informee.
