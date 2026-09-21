@@ -39,6 +39,43 @@ type Event = {
   created: Record<string, unknown> | null;
   exercised: Record<string, unknown> | null;
   source: Record<string, unknown>;
+  // The viewer's own parties, in the order their rights list them — what `yours` is asked about.
+  mine: readonly string[];
+};
+
+// **One party's capacities on one event**, restated from the node's own fields. This is the rule the
+// update's "visible to you because" is folded from and the rule each row's `yours` states, so it lives
+// once: two copies of it drifted apart the last time a capacity was added.
+const rolesOf = (event: Event, party: string): string[] => {
+  const signatories = event.created === null ? [] : stringsOf(event.created.signatories);
+  const observers = event.created === null ? [] : stringsOf(event.created.observers);
+  const witnesses = stringsOf(event.source.witnessParties);
+  const actors = event.exercised === null ? [] : stringsOf(event.exercised.actingParties);
+  const roles: string[] = [];
+  if (signatories.includes(party)) roles.push("signatory");
+  if (observers.includes(party)) roles.push("observer");
+  // An exercised event's acting party is its controller — an informee by the exercise itself, not by
+  // standing on the contract. Before this capacity existed it fell through to witness, which says the
+  // opposite of what it did.
+  if (actors.includes(party)) roles.push("controller");
+  // A stakeholder or controller is not also a witness; a witness is what is left when none applies.
+  if (roles.length === 0 && witnesses.includes(party)) roles.push("witness");
+  return roles;
+};
+
+type Standing = { party: string; roles: string[] };
+
+// One entry of an event's `yours` — the same two slots the update-level reason carries, without the
+// event positions, because this one is already sitting on its event.
+const STANDING: Record<string, Rule<Standing>> = {
+  party: app(
+    "one of my parties named on this event, in the order my rights list them",
+    (r) => r.party,
+  ),
+  roles: app(
+    "that party's capacities on this one event — signatory · observer · controller in that order, or witness when it is none of those and the node lists it as a witness",
+    (r) => r.roles,
+  ),
 };
 
 const isCreated = (e: Event): boolean => e.created !== null;
@@ -60,6 +97,14 @@ const EVENT: Record<string, Rule<Event>> = {
   // ground templateSchema stands on below.
   tree: unjudged(
     "where the event sits among the events shown (depth · ancestorIndex · descendantCount) is derived over the whole list from nodeId and lastDescendantNodeId, and a rule here sees one event",
+  ),
+  yours: app(
+    "for each of my parties, in the order my rights list them, its capacities on this event (rolesOf); a party with none is left out, and a viewer with no party of their own gets an empty list",
+    (e) =>
+      e.mine.flatMap((party) => {
+        const roles = rolesOf(e, party);
+        return roles.length === 0 ? [] : [buildObject(STANDING, { party, roles })];
+      }),
   ),
   contractId: node("source.contractId"),
   templateId: node("source.templateId"),
@@ -241,6 +286,7 @@ export const updateDetailMapping: Mapping<CheckContext> = {
     UpdateDetailHeader: HEADER,
     UpdateDetailEventWithSchema: EVENT,
     UpdateVisibilityReason: VISIBILITY_REASON,
+    VisibilityReason: STANDING,
   },
   expected: (ctx): Expectation => {
     // Either address reaches one of these two node questions, and the answer must not depend on which.
@@ -278,6 +324,7 @@ export const updateDetailMapping: Mapping<CheckContext> = {
       return { ok: false, why: "the transaction is not the shape these rules read" };
     }
 
+    const mine = myParties(ctx.trace);
     const events: Event[] = [];
     for (const rawEvent of arr(value.events)) {
       const created = rec(rawEvent).CreatedEvent;
@@ -290,28 +337,17 @@ export const updateDetailMapping: Mapping<CheckContext> = {
         created: created === undefined ? null : rec(created),
         exercised: exercised === undefined ? null : rec(exercised),
         source: rec(source),
+        mine,
       });
     }
 
     // Gathered per party across the events, in the order my rights name them, and an event's position is
-    // appended each time that party appears in it.
-    const mine = myParties(ctx.trace);
+    // appended each time that party appears in it. The capacities come from rolesOf — the same rule each
+    // row's `yours` states.
     const byParty = new Map<string, Reason>();
     events.forEach((event, index) => {
-      const signatories = event.created === null ? [] : stringsOf(event.created.signatories);
-      const observers = event.created === null ? [] : stringsOf(event.created.observers);
-      const witnesses = stringsOf(event.source.witnessParties);
-      const actors = event.exercised === null ? [] : stringsOf(event.exercised.actingParties);
       for (const party of mine) {
-        const roles: string[] = [];
-        if (signatories.includes(party)) roles.push("signatory");
-        if (observers.includes(party)) roles.push("observer");
-        // An exercised event's acting party is its controller — an informee by the exercise itself, not by
-        // standing on the contract. Before this capacity existed it fell through to witness, which says the
-        // opposite of what it did.
-        if (actors.includes(party)) roles.push("controller");
-        // A stakeholder or controller is not also a witness; a witness is what is left when none applies.
-        if (roles.length === 0 && witnesses.includes(party)) roles.push("witness");
+        const roles = rolesOf(event, party);
         if (roles.length === 0) continue;
         const entry = byParty.get(party) ?? { party, roles: [], eventIndexes: [] };
         for (const role of roles) if (!entry.roles.includes(role)) entry.roles.push(role);
