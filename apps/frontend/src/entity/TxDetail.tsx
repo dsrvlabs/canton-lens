@@ -241,8 +241,9 @@ function Events({ v }: { v: Tx }) {
     lens === null ? 0 : v.events.filter((e) => (e.divulgedTo ?? []).includes(lens)).length;
 
   // Which cut the rows are read by. "tree" is the transaction as the node sent it; "views" cuts it where the
-  // set of parties changes, which is where Canton cuts a transaction into views and encrypts each one to its
-  // own informees. What this can claim about that is in groupUpdateViews (core) and said under the table.
+  // set of the reader's parties that received it changes. That is not Canton's view decomposition — Canton
+  // cuts by participant, which this response cannot see; what this can claim is in groupUpdateViews (core) and
+  // said under the table. The state keeps its old name; the screen does not.
   const [cut, setCut] = useState<"tree" | "views">("tree");
   const groups = groupUpdateViews(v.events);
   const groupOfEvent: number[] = [];
@@ -324,7 +325,7 @@ function Events({ v }: { v: Tx }) {
                 aria-pressed={cut === "views"}
                 onClick={() => setCut("views")}
               >
-                Views
+                Recipients
               </button>
             </fieldset>
           ) : null}
@@ -464,17 +465,19 @@ function Events({ v }: { v: Tx }) {
       {cut === "views" ? (
         <SectionBody>
           <Muted>
-            Cut where the set of parties changes — each band is who received that part. Not the
-            participant's own view decomposition.
+            Cut where the set of your parties that received it changes — each band is which of your
+            parties received that part. Not Canton's view decomposition.
           </Muted>{" "}
           <Disclosure summary="why not" className="clds-disclosure-inline">
             <Muted>
-              A view is cut on each node's <i>own</i> informees; what arrives here is the{" "}
-              <i>cumulative</i> set — the node's and every ancestor's — and an exercise's own set
-              never arrives at all. Those sets only grow downwards, so this cut never invents a
-              boundary Canton would not draw; it misses the ones where a node's own informees narrow
-              without a new party coming in. And it is cut out of what you received, not out of the
-              transaction.
+              Canton cuts a transaction into views by the <i>participants</i> that host each node's
+              informees: a node joins its parent's view when those participants are a subset of the
+              view's, and a new view starts only when a new participant comes in. This response
+              names parties, not participants, and only the parties you asked as. So a new party
+              here may sit on a participant already receiving the view — one view to Canton, two
+              groups here — and a party you do not hold never shows at all. These groups are neither
+              a subset nor a superset of Canton's views; they answer one question exactly: who,
+              among your parties, received each part.
             </Muted>
           </Disclosure>
         </SectionBody>
@@ -490,9 +493,9 @@ function Events({ v }: { v: Tx }) {
   );
 }
 
-// The head of a group of events that went to the same parties. It is where a **view** boundary falls: Canton
-// cuts a transaction into regions whose informee set is the same and encrypts each region to those parties
-// alone. What is printed here is that cut as far as this response can show it — see groupUpdateViews (core).
+// The head of a group of events that went to the same parties of the reader's. It is not a view: Canton cuts
+// by participant, which this response cannot see, so the band names a group and says who received it — see
+// groupUpdateViews (core).
 //
 // A group is a region of the tree, not a run of rows, so it can resume after another group has been printed;
 // the head says "again" rather than numbering the same region twice.
@@ -520,7 +523,7 @@ function ViewGroupRow({
           className="tx-view__title"
           style={{ paddingInlineStart: Math.min(group.depth, INDENT_LEVELS) * INDENT_STEP }}
         >
-          <b>view {n}</b>
+          <b>group {n}</b>
           {again ? <Muted>continued</Muted> : null}
           <Muted>
             {count} event{count === 1 ? "" : "s"}
