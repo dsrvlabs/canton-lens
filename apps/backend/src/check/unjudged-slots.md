@@ -9,7 +9,7 @@ produces has never been read against anything, and mutation cannot find it — t
 A line leaving this list is good news. A line arriving is a question: which branch stopped being
 reached, and was that the seed or the product?
 
-370 slots · 308 judged · 62 not
+371 slots · 309 judged · 62 not
 
 | slot | what its rule says |
 | --- | --- |

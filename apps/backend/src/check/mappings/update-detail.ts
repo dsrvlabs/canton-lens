@@ -83,6 +83,14 @@ const EVENT: Record<string, Rule<Event>> = {
   observers: app("a created event's observers; null for an exercised one", (e) =>
     e.created === null ? null : stringsOf(e.created.observers),
   ),
+  divulgedTo: app(
+    "a created event's witnessParties beyond its signatories ∪ observers — a Create's informees are exactly its stakeholders, so a witness past them saw it through a node above; null for an exercised one, which this response cannot decide",
+    (e) => {
+      if (e.created === null) return null;
+      const stakeholders = [...stringsOf(e.created.signatories), ...stringsOf(e.created.observers)];
+      return stringsOf(e.source.witnessParties).filter((party) => !stakeholders.includes(party));
+    },
+  ),
   // **Absent, not null.** "The key is not there" and "the value is null" are different answers, and a
   // created-only field on an exercised event is the first.
   createArgument: app(
@@ -125,13 +133,14 @@ type Reason = { party: string; roles: string[]; eventIndexes: number[] };
 
 const VISIBILITY_REASON: Record<string, Rule<Reason>> = {
   party: app("one of my parties, in the order my rights list them", (r) => r.party),
-  // **All three capacities are exercised since 2026-09-18.** Canton lists the requesting parties among the
+  // **All four capacities are exercised** — three since 2026-09-18, and controller by the party that
+  // exercised the recorded Accept. Canton lists the requesting parties among the
   // witnesses of their own events, so the last clause — a stakeholder is not *also* called a witness — decides
   // something on every event there is; dropping it goes red. And the seed now holds an event a party sees
   // without being party to it (a create under somebody else's exercise), which is the only place the third
   // capacity is reached at all: remove it and alice's own update answers "no_party_found".
   roles: app(
-    "signatory and observer where that party is among them, in that order; witness only when it is neither and the node lists it as a witness — a stakeholder is not also reported as a witness",
+    "signatory and observer where that party is among them, then controller where it is among an exercised event's acting parties, in that order; witness only when it is none of those and the node lists it as a witness — a stakeholder or controller is not also reported as a witness",
     (r) => r.roles,
   ),
   // The observer role is taken since the seed grew: carol's own updates are creations she owns and does not
@@ -292,11 +301,16 @@ export const updateDetailMapping: Mapping<CheckContext> = {
       const signatories = event.created === null ? [] : stringsOf(event.created.signatories);
       const observers = event.created === null ? [] : stringsOf(event.created.observers);
       const witnesses = stringsOf(event.source.witnessParties);
+      const actors = event.exercised === null ? [] : stringsOf(event.exercised.actingParties);
       for (const party of mine) {
         const roles: string[] = [];
         if (signatories.includes(party)) roles.push("signatory");
         if (observers.includes(party)) roles.push("observer");
-        // A stakeholder is not also a witness; a witness is what is left when neither applies.
+        // An exercised event's acting party is its controller — an informee by the exercise itself, not by
+        // standing on the contract. Before this capacity existed it fell through to witness, which says the
+        // opposite of what it did.
+        if (actors.includes(party)) roles.push("controller");
+        // A stakeholder or controller is not also a witness; a witness is what is left when none applies.
         if (roles.length === 0 && witnesses.includes(party)) roles.push("witness");
         if (roles.length === 0) continue;
         const entry = byParty.get(party) ?? { party, roles: [], eventIndexes: [] };
