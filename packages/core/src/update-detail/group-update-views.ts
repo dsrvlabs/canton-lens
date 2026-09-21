@@ -1,0 +1,79 @@
+// **Who each part of the transaction went to.** Canton does not send a transaction to its parties whole: it
+// cuts it into *views* — regions whose informee set is the same — and encrypts each view to the informees of
+// that region alone. The cut is the privacy boundary, and it is the thing this explorer exists to show.
+//
+// **What this can and cannot compute.** A real view decomposition is made from each node's *own* informee
+// set. The response carries that only for a Create (its stakeholders); for an Exercise the target contract's
+// signatories, the choice's observers and — when consuming — the target's observers never arrive. What every
+// event does carry is `witnessParties`, which in LEDGER_EFFECTS is the *cumulative* informees: this node's
+// and every ancestor's. So the grouping here is
+//
+//     the events you received, cut where the witness set changes
+//
+// and not "the views the participant decrypted". The error only ever goes one way, and it is worth saying why:
+// cumulative sets only grow downwards, so a cut here means a party appeared that was not above — and a node
+// whose own informees differ from its parent view's is exactly where Canton cuts too. **So this never invents
+// a boundary Canton would not draw.** What it misses is the other case: a node whose own informees are
+// narrower than the set already receiving it (parent {A, B}, node {A}) is a view of its own to Canton and is
+// in one group here, because no new party came in. Hence the name — a group, not a view.
+//
+// The set on a group is worth reading for its own sake: a view's informees receive everything under it, so
+// the cumulative set is exactly **who received this part of the transaction**. On that question the grouping
+// is not an approximation at all; every event in a group went to the same parties.
+//
+// One more reason it is not the node's decomposition: nodes you are not a witness of never arrive at all, so
+// this is cut out of a projection, not out of the transaction.
+
+export type UpdateViewGroup = {
+  // The witness set every event in the group shares, in the order the first of them carried it.
+  witnesses: string[];
+  // The events in it, by their index in the update's event list, in the order they arrived.
+  eventIndexes: number[];
+  // The group this one sits inside — the group of its first event's ancestor. null at the top.
+  parentIndex: number | null;
+  // How many groups enclose this one. 0 is a top-level group.
+  depth: number;
+};
+
+export type GroupableEvent = {
+  witnessParties: string[];
+  tree: { ancestorIndex: number | null };
+};
+
+// A set, written the same way whatever order it arrived in — two events are in one group when the parties
+// match, not when the arrays match.
+const asSet = (parties: readonly string[]): string => [...new Set(parties)].sort().join("\u0000");
+
+export function groupUpdateViews(events: readonly GroupableEvent[]): UpdateViewGroup[] {
+  const groups: UpdateViewGroup[] = [];
+  // Which group each event landed in, so a child can ask where its ancestor went.
+  const groupOf = new Map<number, number>();
+
+  events.forEach((event, index) => {
+    const witnesses = event.witnessParties;
+    const ancestorIndex = event.tree.ancestorIndex;
+    const ancestorGroup = ancestorIndex === null ? undefined : groupOf.get(ancestorIndex);
+    const enclosing = ancestorGroup === undefined ? undefined : groups[ancestorGroup];
+
+    // An event joins the group above it when it went to exactly the same parties. Anything else — a root, or
+    // a witness set that changed — starts a group, and that is where a view boundary would fall.
+    if (
+      enclosing !== undefined &&
+      ancestorGroup !== undefined &&
+      asSet(enclosing.witnesses) === asSet(witnesses)
+    ) {
+      enclosing.eventIndexes.push(index);
+      groupOf.set(index, ancestorGroup);
+      return;
+    }
+    groups.push({
+      witnesses: [...witnesses],
+      eventIndexes: [index],
+      parentIndex: ancestorGroup ?? null,
+      depth: enclosing === undefined ? 0 : enclosing.depth + 1,
+    });
+    groupOf.set(index, groups.length - 1);
+  });
+
+  return groups;
+}

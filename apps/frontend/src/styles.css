@@ -493,39 +493,109 @@
 .tx-events > tbody > tr > td:not(.tx-cell) {
   overflow-wrap: anywhere;
 }
-/* A chip is nowrap because value + Copy is one piece, but when the cell is narrower than that, it wraps
-   inside the piece — better than covering the neighbouring cell. */
-.tx-events .clds-badge .clds-inline {
+/* A chip is nowrap because a value and its Copy are one piece. The **cell** wraps instead, so a party and the
+   count beside it break onto a second line rather than the id breaking in half. */
+.tx-events .tx-detail .clds-badge .clds-inline {
   white-space: normal;
 }
 /* ── The event table drawn as a nested data table ──────────────────────────────
    One event is one row of fixed height. The hierarchy is said by the first cell alone — a caret where an
    exercise has events under it, and an indent — and every other cell holds one short value, clipped rather
    than wrapped. What does not fit waits behind the chevron at the end of the row. */
+/* A cell wraps rather than clips. A row is then one line or two, which is what the content asks for — the
+   alternative was a fixed line and an ellipsis in the middle of a template name or a party chip. */
 .tx-cell {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  /* break-word, not anywhere: a cell that runs out of room puts the next piece on the next line, and only a
+     single unbroken run (a contract id) is cut through. "controller" stays "controller". */
+  overflow-wrap: break-word;
 }
+/* The chevron stands in the middle of its column, not on the table's edge. */
 .tx-cell--end {
-  text-align: right;
+  text-align: center;
 }
 .tx-lead {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--clds-space-2);
   min-width: 0;
 }
-/* When the indent leaves too little room, the badge gives way before the count does: the kind repeats down
-   the column and is in the details, the count of what is folded away is on this row alone. */
+/* The caret and the kind badge, held together. The line may wrap after them — the count of a folded subtree
+   drops below — but never between them: a caret alone on a line reads as a row of its own. */
+.tx-lead__kind {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: var(--clds-space-2);
+  min-width: 0;
+}
+/* ── The rails ────────────────────────────────────────────────────────────────
+   A row is joined to the one it hangs from by a line. The rails are drawn against the cell, not inside the
+   line of text, so each one runs the cell's whole height and meets the rails on the rows above and below —
+   which is the difference between a tree and a column of marks that happen to be indented. */
+.tx-events > tbody > tr.tx-event > td {
+  /* A little more air above the line than the table gives by default — the caret and the badge sat on the
+     row's top edge, and on a two-line row the second line made that look like a slip. */
+  padding-top: var(--tx-row-pad);
+}
+.tx-events {
+  --tx-row-pad: 14px;
+  /* Where a rail meets the row: the middle of the caret, which is 24px tall and first on the line. Rows can be
+     one line or two, so this is measured from the top rather than as a share of the height. */
+  --tx-rail-join: calc(var(--tx-row-pad) + 12px);
+}
+.tx-cell--tree {
+  position: relative;
+  /* Darker than the table's own rules — the rails are the one line here that has to be followed, and at the
+     rules' weight they read as more of the table. */
+  --tx-rail-ink: color-mix(in srgb, var(--clds-color-ink-faint) 70%, transparent);
+}
+.tx-rail {
+  position: absolute;
+  /* A pixel past each edge, so a rail runs under the row's own border and meets the one below it. Stopping
+     at the cell left a hairline gap at every row, and a line that breaks nine times is nine marks. */
+  top: -1px;
+  bottom: -1px;
+  width: 12px;
+  border-color: var(--tx-rail-ink);
+  pointer-events: none;
+}
+/* An ancestor with events still below this row: its line passes straight through. */
+.tx-rail--line {
+  border-left: 1px solid var(--tx-rail-ink);
+}
+/* The turn into this row: down from the top, then across. Rounded, so the corner reads as one stroke. */
+.tx-rail--elbow {
+  bottom: auto;
+  /* The arm reaches to the edge of the caret's box — the mark itself sits inset, so there is still air. */
+  width: 14px;
+  height: calc(var(--tx-rail-join) + 1px);
+  border-left: 1px solid var(--tx-rail-ink);
+  border-bottom: 1px solid var(--tx-rail-ink);
+  /* As round as the arm is long — a corner that is only a little rounded reads as a hook. */
+  border-bottom-left-radius: 10px;
+}
+/* A row with events of its own: the line leaves it downwards, from the middle to the row below. */
+.tx-rail--down {
+  /* Leaves from under the caret, not out of it — the caret's own half plus a breath of air. */
+  top: calc(var(--tx-rail-join) + 16px);
+  border-left: 1px solid var(--tx-rail-ink);
+}
+/* The payload row of an open event is part of the same run, so the lines cross it too. */
+.tx-args .tx-rail {
+  top: -1px;
+  bottom: -1px;
+}
+
+/* Out of room, the kind breaks inside itself ("exercised ·" / "consuming") rather than pushing the caret off
+   its line. */
+.tx-lead__kind .clds-badge .clds-inline {
+  white-space: normal;
+}
+/* The kind badge is one piece — it wraps to the line below with the count beside it rather than being cut
+   through the middle of a word. */
 .tx-lead .clds-badge {
   min-width: 0;
-  overflow: hidden;
-}
-.tx-lead .clds-badge .clds-inline {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 .tx-folded {
   flex: none;
@@ -555,8 +625,12 @@
   color: var(--clds-color-ink);
   background: var(--clds-color-field);
 }
+/* The one control a reader reaches for on every row, so it is the larger of the two. */
 .tx-caret--more {
-  font-size: 12px;
+  width: 34px;
+  height: 34px;
+  margin: -10px 0;
+  font-size: 17px;
 }
 .tx-caret--none {
   cursor: default;
@@ -568,12 +642,89 @@
 .tx-event--clickable {
   cursor: pointer;
 }
+/* The reader's own standing on a row — one badge per capacity, in the accent the product uses for "this is
+   yours". Kept on one line with the rest of the row. */
+.tx-standing {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--clds-space-2);
+}
+/* "You" is a different kind of fact from a party's name, so it takes a different ground: the accent laid
+   down thin, rather than the solid soft the party chips wear. Same hue, so it is still yours; see-through, so
+   it is not one more chip. */
+.clds-badge.tx-you {
+  background: color-mix(in srgb, var(--clds-color-accent) 12%, transparent);
+  color: var(--clds-color-accent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--clds-color-accent) 28%, transparent);
+}
+
+/* ── The head's two controls ──────────────────────────────────────────────────
+   Each is a pair of choices drawn as one piece — a hairline around both, the one in use on the field ground.
+   Four words in a row read as four unrelated actions; two pairs read as two questions. */
+.tx-seg {
+  display: inline-flex;
+  /* A fieldset for the semantics, drawn as a control: none of the box a fieldset comes with. */
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+  border: 1px solid var(--clds-color-rule);
+  border-radius: var(--clds-radius-lg);
+  overflow: hidden;
+  vertical-align: middle;
+  margin-inline-start: var(--clds-space-4);
+}
+.tx-seg__opt {
+  font: inherit;
+  font-size: var(--clds-text-small);
+  font-weight: var(--clds-weight-medium);
+  color: var(--clds-color-accent);
+  background: transparent;
+  border: 0;
+  padding: 3px 10px;
+  cursor: pointer;
+}
+.tx-seg__opt + .tx-seg__opt {
+  border-left: 1px solid var(--clds-color-rule);
+}
+.tx-seg__opt:hover {
+  background: var(--clds-color-subtle);
+}
+/* The one in use: on the field ground, in the ink, and heavier. */
+.tx-seg__opt[aria-pressed="true"] {
+  background: var(--clds-color-field);
+  color: var(--clds-color-ink);
+  font-weight: var(--clds-weight-semibold);
+}
+.tx-head-count {
+  margin-inline-start: var(--clds-space-4);
+}
+
+/* The head of a witness group under the views cut — a band on the field ground, in the table's own columns:
+   the name where the events are, the recipients under Witnesses, the reader's standing under You. */
+.clds-table > tbody > tr.tx-view > td {
+  padding-top: var(--clds-space-6);
+  padding-bottom: var(--clds-space-6);
+  border-bottom: 1px solid var(--clds-color-rule);
+  background: var(--clds-color-field);
+  font-size: var(--clds-text-note);
+  vertical-align: middle;
+}
+.tx-view__title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--clds-space-3);
+}
+
 /* The detail row — everything about one event that its line could not hold. It is inset to the width of the
    ordinal column, so it reads as belonging to the row above rather than as another row of the table.
    **The child combinator is load-bearing**: these cells hold tables of their own (the typed payload), and a
    descendant selector put this row's inset on every cell inside them — 62px of padding per field. */
+/* An open row keeps a line under it. It used to be dropped so the row and its details read as one block, but
+   with the details set on their own ground the only thing that went was the boundary between what the row
+   says and what it opened. */
 .clds-table > tbody > tr.tx-event--open > td {
-  border-bottom: 0;
+  border-bottom: 1px solid var(--clds-color-rule);
 }
 .clds-table > tbody > tr.tx-args > td {
   padding-top: 0;
@@ -581,14 +732,19 @@
   padding-inline-start: calc(var(--clds-space-8) + 44px);
 }
 .tx-detail {
-  border-left: 2px solid var(--clds-color-rule);
   padding-left: var(--clds-space-6);
 }
 .tx-detail > * + * {
   margin-top: var(--clds-space-4);
 }
-.tx-detail .clds-description-list {
+.tx-detail .clds-dl {
   margin: 0;
+}
+/* The facts about the event and the payloads that follow them are two kinds of thing, and the break between
+   them is made of space. A rule there read as another row of the list it was meant to end — the list already
+   draws lines, and one more line cannot say "and now something else". */
+.tx-detail > .clds-dl + * {
+  margin-top: var(--clds-space-7);
 }
 /* The row under the pointer, lit as one piece with its open detail — the two are one event in two <tr>s, and
    :hover would paint whichever half the pointer is in. Direct children again, so a payload's own table is
@@ -600,11 +756,6 @@
   background: var(--clds-color-row-hover);
 }
 
-/* Everything under an event — the typed fields, a value written out inline, a folded payload — keeps the
-   same gap from the block above it, whichever kind either of them is. */
-.tx-args > td > * + * {
-  margin-top: var(--clds-space-2);
-}
 /* The informee lens — the parties named on this update, and how many of its events name each. Setting it
    dims the rest rather than removing them: what is dimmed is still one of the transaction's events, and
    taking it away would take the tree above it too. */
