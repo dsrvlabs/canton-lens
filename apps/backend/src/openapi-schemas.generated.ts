@@ -3532,6 +3532,19 @@ export const responseSchemas = {
       tree: {
         $ref: "#/components/schemas/UpdateEventPlacement",
       },
+      divulgedTo: {
+        anyOf: [
+          {
+            type: "array",
+            items: {
+              type: "string",
+            },
+          },
+          {
+            type: "null",
+          },
+        ],
+      },
       contractId: {
         type: "string",
       },
@@ -3614,6 +3627,7 @@ export const responseSchemas = {
       "choiceSchema",
       "consuming",
       "contractId",
+      "divulgedTo",
       "entity",
       "interfaceId",
       "kind",
@@ -4008,6 +4022,6 @@ export const responseSchemas = {
   },
   VisibilityRole: {
     type: "string",
-    enum: ["signatory", "observer", "witness"],
+    enum: ["signatory", "observer", "controller", "witness"],
   },
 };
