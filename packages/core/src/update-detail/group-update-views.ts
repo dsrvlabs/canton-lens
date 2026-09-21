@@ -1,25 +1,24 @@
 // **Who each part of the transaction went to.** Canton does not send a transaction to its parties whole: it
-// cuts it into *views* — regions whose informee set is the same — and encrypts each view to the informees of
-// that region alone. The cut is the privacy boundary, and it is the thing this explorer exists to show.
+// cuts it into *views* and encrypts each view to the participants that must receive it. The cut is the privacy
+// boundary, and it is the thing this explorer exists to show.
 //
-// **What this can and cannot compute.** A real view decomposition is made from each node's *own* informee
-// set. The response carries that only for a Create (its stakeholders); for an Exercise the target contract's
-// signatories, the choice's observers and — when consuming — the target's observers never arrive. What every
-// event does carry is `witnessParties`, which in LEDGER_EFFECTS is the *cumulative* informees: this node's
-// and every ancestor's. So the grouping here is
+// **What this can and cannot compute.** Canton cuts on *participants*, not parties: a node joins its parent's
+// view when the participants hosting its informees are a subset of that view's, and starts a new view only
+// when a new participant comes in (`TransactionViewDecompositionFactory.needNewView`; a node whose informees
+// narrow joins its parent). This response carries neither participants nor a node's own informees — only
+// `witnessParties`, the *cumulative* informees (this node's and every ancestor's), limited to the parties the
+// reader asked as. So the grouping here is
 //
-//     the events you received, cut where the witness set changes
+//     the events you received, cut where the set of your parties that received them changes
 //
-// and not "the views the participant decrypted". The error only ever goes one way, and it is worth saying why:
-// cumulative sets only grow downwards, so a cut here means a party appeared that was not above — and a node
-// whose own informees differ from its parent view's is exactly where Canton cuts too. **So this never invents
-// a boundary Canton would not draw.** What it misses is the other case: a node whose own informees are
-// narrower than the set already receiving it (parent {A, B}, node {A}) is a view of its own to Canton and is
-// in one group here, because no new party came in. Hence the name — a group, not a view.
+// and not Canton's views. The two differ in both directions. A new party here may be hosted on a participant
+// already receiving the view — one view to Canton, a new group here; on a stack where every party sits on one
+// participant, that is every boundary drawn. And a party you did not ask as never appears — a new view to
+// Canton, no group here. So these groups are neither a subset nor a superset of Canton's views, and the screen
+// must not call them views. Hence the name — a group, not a view.
 //
-// The set on a group is worth reading for its own sake: a view's informees receive everything under it, so
-// the cumulative set is exactly **who received this part of the transaction**. On that question the grouping
-// is not an approximation at all; every event in a group went to the same parties.
+// The set on a group is exact for the one question it answers: cumulative sets only grow downwards, so every
+// event in a group went to the same parties of yours, and that is what the band says.
 //
 // One more reason it is not the node's decomposition: nodes you are not a witness of never arrive at all, so
 // this is cut out of a projection, not out of the transaction.
