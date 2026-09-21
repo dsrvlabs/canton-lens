@@ -146,6 +146,15 @@ pre.clds-scroll {
   /* The scrollbar sits on the padding rather than over the first character of a line. */
   scrollbar-gutter: stable;
 }
+/* The same ground, on one line — for a value short enough to stand beside its label ({} · "EUR" · 12).
+   Written out rather than folded away, it still has to read as a value and not as prose. */
+.clds-code-inline {
+  padding: 1px var(--clds-space-2);
+  background: var(--clds-color-field);
+  border: 1px solid var(--clds-color-rule);
+  border-radius: var(--clds-radius-sm);
+  font-size: var(--clds-text-fine);
+}
 
 /* Columns folded away on a narrow screen — developer columns (offset and the like) take this. */
 @media (max-width: 900px) {
