@@ -56,24 +56,15 @@ import {
 import { ledgerFailureToHttp } from "./ledger-failure-to-http.ts";
 import { withAuth } from "./ledger-send-with-token.ts";
 import type { RouterRequest, RouterResponse } from "./router-types.ts";
+import { matchRoute } from "./routes.ts";
 
-const CONTRACT_DETAIL_PATH = /^\/api\/contracts\/([^/]+)$/;
-const PARTY_PATH = /^\/api\/party\/([^/]+)$/;
+// The addresses themselves live in `routes.ts`, as one list this file and the check both read.
 // Update detail is a **point lookup**. By id, or by offset (the creating-update link from Contracts).
-const UPDATE_DETAIL_PATH = /^\/api\/updates\/([^/]+)$/;
-// `[0-9]+`, not `\d+` — the document-side pattern is written with the same characters (there `\d`
-// would also accept Unicode digits, which made the document and the code disagree).
-// It does not accept digits only — if `-2` fails to match the path it becomes “no such thing” (404), and the
-// place to say “the format is wrong” disappears. Match the path broadly and cut malformed values off with a
-// 400 at the validation site below.
-const UPDATE_BY_OFFSET_PATH = /^\/api\/updates\/by-offset\/([^/]+)$/;
 // The real shape of an update id. The multihash prefix `1220` (sha2-256, 32 bytes) + 64 hex characters = 68
 // characters (verified across all 30 updates on a real node). Passing a malformed one straight to
 // the ledger made the ledger answer 400, and that went out as a 502 — a caller's fault is cut off with a 400
 // in this layer. **If the hash changes, this length changes too.**
 const UPDATE_ID_SHAPE = /^1220[0-9a-f]{64}$/;
-// Reading the contract blueprint — package schema (decoder). A package is immutable by its id (= content hash), so once read it stays the same.
-const PACKAGE_SCHEMA_PATH = /^\/api\/packages\/([0-9a-f]{64})\/schema$/;
 
 // **Schema cache** — content-addressed (packageId), so the decoded *shape* is the same value for everyone.
 // “No caching of ledger data” (a v1 non-goal — if the app keeps data whose answer differs per person in one
@@ -341,66 +332,55 @@ export async function routeRequest(
     return { status: 405, body: { reason: "method_not_allowed" } };
   }
 
-  const detailMatch = CONTRACT_DETAIL_PATH.exec(req.path);
-  const isSession = req.path === "/api/session";
-  const isContracts = req.path === "/api/contracts";
-  const isOffers = req.path === "/api/offers";
-  const isTemplateCatalog = req.path === "/api/catalog/templates";
-  const isPackageCatalog = req.path === "/api/catalog/packages";
-  const isNode = req.path === "/api/node";
-  const isSearch = req.path === "/api/search";
-  const isUpdates = req.path === "/api/updates";
-  const isTimeline = req.path === "/api/timeline";
-  const isHoldings = req.path === "/api/holdings";
-  const isPreapprovals = req.path === "/api/preapprovals";
-  const isHome = req.path === "/api/home";
-  const partyMatch = PARTY_PATH.exec(req.path);
-  const updateByOffsetMatch = UPDATE_BY_OFFSET_PATH.exec(req.path);
-  const updateDetailMatch = updateByOffsetMatch ? null : UPDATE_DETAIL_PATH.exec(req.path);
-  const schemaMatch = PACKAGE_SCHEMA_PATH.exec(req.path);
-  if (
-    !schemaMatch &&
-    !updateDetailMatch &&
-    !updateByOffsetMatch &&
-    !isHome &&
-    !isSession &&
-    !isContracts &&
-    !detailMatch &&
-    !isOffers &&
-    !isTemplateCatalog &&
-    !isPackageCatalog &&
-    !isNode &&
-    !isSearch &&
-    !isUpdates &&
-    !isTimeline &&
-    !isHoldings &&
-    !isPreapprovals &&
-    !partyMatch
-  ) {
+  // **One lookup against the route list decides the address.** Sixteen separate comparisons decided it before,
+  // and the 404 was their negation — a seventeenth address could be recognised here and left out of that
+  // negation, or the reverse. There is now a single answer, and whether this application has the address is
+  // the same question as which address it is.
+  const hit = matchRoute(req.path);
+  if (hit === null) {
     return { status: 404, body: { reason: "not_found" } };
   }
+  const at = (template: string): boolean => hit.template === template;
+  /** The captured segment of this address, still percent-encoded — or null if we are elsewhere. */
+  const segment = (template: string): string | null => (at(template) ? hit.captured : null);
+
+  const isSession = at("/api/session");
+  const isContracts = at("/api/contracts");
+  const isOffers = at("/api/offers");
+  const isTemplateCatalog = at("/api/catalog/templates");
+  const isPackageCatalog = at("/api/catalog/packages");
+  const isNode = at("/api/node");
+  const isSearch = at("/api/search");
+  const isUpdates = at("/api/updates");
+  const isTimeline = at("/api/timeline");
+  const isHoldings = at("/api/holdings");
+  const isPreapprovals = at("/api/preapprovals");
+  const isHome = at("/api/home");
+  const detailMatch = segment("/api/contracts/{contractId}");
+  const partyMatch = segment("/api/party/{partyId}");
+  const updateByOffsetMatch = segment("/api/updates/by-offset/{offset}");
+  const updateDetailMatch = segment("/api/updates/{updateId}");
+  const schemaMatch = segment("/api/packages/{packageId}/schema");
 
   if (req.ledgerToken === null) {
     return { status: 401, body: { reason: "unauthenticated" } };
   }
 
-  // The capture group of both regexes is ([^/]+), so if there is a match, group 1 is necessarily present too.
-  // noUncheckedIndexedAccess cannot read that, so it is narrowed with ?? "".
   let decodedPartyId = "";
-  if (partyMatch) {
-    const d = decodePathSegment(partyMatch[1] ?? "");
+  if (partyMatch !== null) {
+    const d = decodePathSegment(partyMatch);
     if (!d.ok) return { status: 400, body: { reason: "invalid_path" } };
     decodedPartyId = d.value;
   }
   let decodedContractId = "";
-  if (detailMatch) {
-    const d = decodePathSegment(detailMatch[1] ?? "");
+  if (detailMatch !== null) {
+    const d = decodePathSegment(detailMatch);
     if (!d.ok) return { status: 400, body: { reason: "invalid_path" } };
     decodedContractId = d.value;
   }
   let decodedUpdateId = "";
-  if (updateDetailMatch) {
-    const d = decodePathSegment(updateDetailMatch[1] ?? "");
+  if (updateDetailMatch !== null) {
+    const d = decodePathSegment(updateDetailMatch);
     if (!d.ok) return { status: 400, body: { reason: "invalid_path" } };
     decodedUpdateId = d.value;
   }
@@ -415,7 +395,7 @@ export async function routeRequest(
   const bad = (reason: string): RouterResponse => ({ status: 400, body: { reason } });
 
   // Excludes the four paths that do not take an offset — their contracts have no invalid_offset.
-  const takesOffset = !isSession && !isNode && !schemaMatch && !updateDetailMatch;
+  const takesOffset = !isSession && !isNode && schemaMatch === null && updateDetailMatch === null;
   if (
     takesOffset &&
     req.query.offset !== undefined &&
@@ -429,13 +409,13 @@ export async function routeRequest(
   // the meantime a 502 or 504 would go out instead of a 400. Shape has nothing to do with the
   // ledger. (It comes after the 401, though — there is no reason to teach an unauthenticated request about
   // our input format.)
-  if (updateDetailMatch && !UPDATE_ID_SHAPE.test(decodedUpdateId)) {
+  if (updateDetailMatch !== null && !UPDATE_ID_SHAPE.test(decodedUpdateId)) {
     return bad("invalid_path");
   }
   // The ledger accepts only offsets **greater than 0** for this point lookup (NON_POSITIVE_OFFSET). And a
   // notation with leading zeros is forbidden by the document — this stops `0000000000000168` from being
   // accepted on the strength of its value alone.
-  if (updateByOffsetMatch && !isPositiveIntegerString(updateByOffsetMatch[1] ?? "")) {
+  if (updateByOffsetMatch !== null && !isPositiveIntegerString(updateByOffsetMatch)) {
     return bad("invalid_offset");
   }
 
@@ -1088,9 +1068,9 @@ export async function routeRequest(
     };
   }
 
-  if (schemaMatch) {
+  if (schemaMatch !== null) {
     // The schema is the same value for everyone, but downloading the package requires a token — this route also sits behind the 401.
-    const source = await loadSchema(send, schemaMatch[1] ?? "");
+    const source = await loadSchema(send, schemaMatch);
     if (source.status !== "ok") {
       // The reason it could not be read, as is — an unsupported LF version (unsupported_lf_version:1.x) is not a 502 but a circumstance inside a 200: the node is fine.
       if (
@@ -1100,7 +1080,7 @@ export async function routeRequest(
       ) {
         return {
           status: 200,
-          body: { status: "unavailable", reason: source.reason, packageId: schemaMatch[1] },
+          body: { status: "unavailable", reason: source.reason, packageId: schemaMatch },
         };
       }
       return ledgerFailureToHttp(source.reason as Parameters<typeof ledgerFailureToHttp>[0]);
@@ -1108,7 +1088,7 @@ export async function routeRequest(
     return { status: 200, body: { status: "ok", ...source.schema } };
   }
 
-  if (updateDetailMatch || updateByOffsetMatch) {
+  if (updateDetailMatch !== null || updateByOffsetMatch !== null) {
     // **Update detail is a point lookup** (LEDGER_EFFECTS) — even outside the list range it opens as long as the participant retains it. A pruned past is
     // named pruned (410) by core, and absent or not visible is a single 404 (the v1 rule of not distinguishing “absent” from “cannot see”).
     const viewer = await resolveViewer(send);
@@ -1118,13 +1098,10 @@ export async function routeRequest(
     if (viewer.kind === "no_party_rights") {
       return noPartyRights();
     }
-    const lookup: LedgerCallResult<unknown> = updateByOffsetMatch
-      ? await callGetUpdateByOffset(
-          send,
-          viewer.filter,
-          Number.parseInt(updateByOffsetMatch[1] ?? "0", 10),
-        )
-      : await callGetUpdateById(send, viewer.filter, decodedUpdateId);
+    const lookup: LedgerCallResult<unknown> =
+      updateByOffsetMatch !== null
+        ? await callGetUpdateByOffset(send, viewer.filter, Number.parseInt(updateByOffsetMatch, 10))
+        : await callGetUpdateById(send, viewer.filter, decodedUpdateId);
     if (!lookup.ok) {
       return ledgerFailureToHttp(lookup.reason);
     }
@@ -1447,7 +1424,7 @@ export async function routeRequest(
     return { status: 200, body: { ...snapshot, ledgerEnd: current } };
   }
 
-  if (partyMatch) {
+  if (partyMatch !== null) {
     const partyId = decodedPartyId;
     const offsetResult = await resolveOffset(send, req.query);
     if (!offsetResult.ok) {

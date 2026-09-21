@@ -1,7 +1,7 @@
 // Offers are split by direction — "my turn" and "waiting on the counterparty" are different questions.
 // The direction is exactly as the server judged it; what happens here is arrangement.
 import { Badge, MessageRow, Mono, Muted, Scroll, Section, Table } from "@canton-lens/design-system";
-import type { TransferOfferRow } from "../api/types.ts";
+import type { OffersResponse, TransferOfferRow } from "../api/types.ts";
 import { PartyChip } from "../format/chips.tsx";
 import { text, trimZeros } from "../format/format.ts";
 import { useSession } from "../session/SessionContext.tsx";
@@ -67,8 +67,16 @@ function OfferRow({ r }: { r: TransferOfferRow }) {
   );
 }
 
+// **The drawing is split from the fetching.** Everything below `…View` is a function of one response and
+// nothing else: no context, no effect, no clock. That is what lets a test hand it the answer a real
+// participant gave and look at the rows that come out — with the two joined, a static render only ever
+// reaches the "reading…" branch and the screen itself is never looked at (2026-09-18).
 export function Offers() {
-  const { offers: o } = useSession();
+  const { offers } = useSession();
+  return <OffersView o={offers ?? null} />;
+}
+
+export function OffersView({ o }: { o: OffersResponse | null }) {
   if (!o) return <div id="view-offers" />;
   if (o.kind !== "available") {
     return (
