@@ -36,8 +36,15 @@ const Unavailable = ({ reason }: { reason: string | undefined }) => (
   <CardUnavailable>Could not fetch — {said(reason, "reason unknown")}</CardUnavailable>
 );
 
+// **The drawing is split from the fetching.** `HomeView` is a function of one response and nothing else —
+// no context, no effect, no clock — so a test can hand it the answer a real participant gave and look at
+// the cards and rows that come out (2026-09-18).
 export function Home() {
-  const { home: h } = useSession();
+  const { home } = useSession();
+  return <HomeView h={home ?? null} />;
+}
+
+export function HomeView({ h }: { h: HomeResponse | null }) {
   if (!h) return <div id="home" />;
   const when = fmtTime(h.readAt);
 

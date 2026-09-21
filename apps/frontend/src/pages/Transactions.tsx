@@ -37,6 +37,7 @@ const TX_KEYS = ["template", "party", "before"] as const;
 // Apply, Clear and a filter change empty it.
 const newerStack: string[] = [];
 
+// **The fetching half.** It holds the session, the effect and the answer; it draws nothing.
 export function Transactions({ hash }: { hash: string }) {
   const { api, lastOffset, loading, generation, templates } = useSession();
   // Suggestion material for the filter field — module:entity from my catalog. Typing help, not judgement.
@@ -48,19 +49,9 @@ export function Transactions({ hash }: { hash: string }) {
 
   const [u, setU] = useState<UpdatesResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [templateInput, setTemplateInput] = useState(template);
-  const [partyInput, setPartyInput] = useState(party);
-  // The fields mirror the address — only when the address changed and when everything was re-read.
-  // Mirroring on every draw would wipe what is being typed.
-  const applied = useMemo(() => ({ template, party, generation }), [template, party, generation]);
-  useEffect(() => {
-    setTemplateInput(applied.template);
-    setPartyInput(applied.party);
-  }, [applied]);
   // When the filter changes, the rewind stack starts over.
   const filterKey = `${template}\u0000${party}`;
   const lastFilter = useRef(filterKey);
-  const clearedHref = hashWith({ template: null, party: null, before: null }, hash);
 
   // Read once per (generation · offset · query) — so a mid-change render does not go out on old conditions.
   const ran = useRef<string | null>(null);
@@ -94,6 +85,53 @@ export function Transactions({ hash }: { hash: string }) {
       if (ran.current === key) ran.current = null;
     };
   }, [api, loading, generation, lastOffset, template, party, before, filterKey]);
+
+  return (
+    <TransactionsView
+      u={u}
+      error={error}
+      hash={hash}
+      templateOptions={templateOptions}
+      generation={generation}
+    />
+  );
+}
+
+// **The drawing half — a function of one response and the address, and nothing else.** No session, no
+// effect, no clock. That is what lets a test hand it the answer a real participant gave and count the rows
+// that come out: joined to the fetching, a static render only ever reaches "Reading updates…" and the screen
+// itself is never looked at (2026-09-18).
+//
+// The text fields keep their own state here because that is what they are — what is being typed, which is
+// not an answer to anything. They start from the address, which is where the applied filter lives.
+export function TransactionsView({
+  u,
+  error,
+  hash,
+  templateOptions = [],
+  generation = 0,
+}: {
+  u: UpdatesResponse | null;
+  error: string | null;
+  hash: string;
+  templateOptions?: readonly string[];
+  /** See `ContractsView` — a full re-read restores the draft fields from the address. */
+  generation?: number;
+}) {
+  const q = hashQuery(hash);
+  const template = q.get("template") ?? "";
+  const party = q.get("party") ?? "";
+  const before = q.get("before") ?? "";
+  const [templateInput, setTemplateInput] = useState(template);
+  const [partyInput, setPartyInput] = useState(party);
+  // The fields mirror the address — only when the address changed. Mirroring on every draw would wipe
+  // what is being typed.
+  const applied = useMemo(() => ({ template, party, generation }), [template, party, generation]);
+  useEffect(() => {
+    setTemplateInput(applied.template);
+    setPartyInput(applied.party);
+  }, [applied]);
+  const clearedHref = hashWith({ template: null, party: null, before: null }, hash);
 
   const clear = () => {
     setTemplateInput("");

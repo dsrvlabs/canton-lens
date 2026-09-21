@@ -1,19 +1,22 @@
 # check/fixtures
 
-**These are the answers a real, running participant gave. They are not invented examples.**
+**These are the answers a real, running participant gave. They are not invented examples.** One thing in
+them was edited and it is named below: the package list, from which the standard libraries were removed along
+with their bytes.
 
 CI has no Canton node. So `run-check.test.ts` stands these files up in the ledger's place and runs
-**the same `runCheck`** that runs against a live participant — the only thing that diverges is `send`.
+**the same check code** as `make check` (a real node) — the only thing that diverges is `send`.
 
 ## What they were recorded from
 
 | | |
 |---|---|
-| Recorded at | 2026-09-14T11:28:07.289Z |
-| Ledger | `http://localhost:7575` (a local participant) |
+| Recorded at | 2026-09-18T11:56:07.105Z |
+| Ledger | `http://localhost:7575` (a local dev stack, outside this repo) |
 | Canton version | 3.5.15 |
-| People | alice · bob · carol |
-| Addresses asked | 54 (everything the check actually asks) |
+| People | alice · bob · carol · nobody · idp · padmin · actor · super* · superplus* · dual · mixed · dave |
+| Ledger end | 263 — the point every answer here was read at |
+| Addresses asked | 376 (everything the check actually asks) |
 
 **Recorded with user tokens.** Recorded with an admin token, the files would hold everything rather than the
 boundary Canton enforces, and then they would be material unrelated to the statement this product exists to
@@ -22,13 +25,20 @@ prove — that different people see different things.
 **No token is in these files.** Only a person's name goes into the key, and a test scans every file here for
 credential-shaped content.
 
+**What each person was given was asked of the node, not read off our own answers.** The party classification
+in `meta.json` is the participant's own rights answer, read the way the product reads it, and a test in the
+repository derives it again from the recorded answer and requires the two to agree. Whether the seed left a
+person anything to see was asked directly with their token — a wildcard question the explorer never sends —
+because reading that from our own list would let an application that drops rows agree with itself.
+
 ## The files
 
 | | |
 |---|---|
-| `ledger.jsonl` | 141 ledger questions and their answers. One pair per line |
-| `packages/*.bin` | The raw bytes of 32 packages (358 KB) — the input to blueprint reading |
-| `meta.json` | What the test reads — the instant recorded, the people, the Canton version |
+| `ledger.jsonl` | 477 ledger questions and their answers. One pair per line |
+| `packages/*.bin` | The raw bytes of 32 packages (378 KB) — the input to blueprint reading |
+| `own-set.json` | **The answer key** — every contract and update id the node said each person can see, asked directly with their token, together with the two request bodies that produced them. The only input here not made by asking the way the product asks |
+| `meta.json` | The manifest the test reads — the instant recorded, the Canton version, and per person the party classification their rights imply and whether the seed left them anything to see |
 
 **The test uses `meta.json`'s `recordedAt` as its "now".** Judging expiry hangs on that value, so using the
 real clock would let the expiry times the seed planted slip into the past and the answers would change on
@@ -60,16 +70,38 @@ They were removed from the ledger's package **list** too. Left in, the catalog c
 "blueprint could not be read" rows appear — removed, the result is indistinguishable from a node where those
 packages were never uploaded.
 
+## What this recording has to contain
+
+A rule nothing reaches cannot be wrong, and nothing above level ⑥ can tell that apart from a rule that held.
+So the check requires the recording to hold each of these by name (`../conditions.ts`), and says which one
+went missing:
+
+- somebody sees more active contracts than one node page holds, so the walk resumes
+- the second page of a list is actually asked for, with the cursor the first page gave
+- one list is long enough that the first page is not the whole of it
+- somebody holds a token whose balance decays by the round
+- a contract whose standard view the node could not compute
+- one person holds an expired and an unexpired preapproval with the same receiver
+- a contract created and archived inside one window
+- an opened update where one of my parties is an observer and not a signatory
+- an opened update where one of my parties saw an event it is not a party to
+- an opened update where a party is both a stakeholder and listed among the witnesses
+- somebody's home page has more recent updates than it draws
+- a person the seed left nothing at all
+
+There are also 5 the check states it **cannot** have here, each with the reason — a point
+lookup that is not a transaction needs two synchronizers, and so on. They are on the same list so that "no
+seed could give this" never reads as "somebody forgot".
+
 ## Re-recording
 
-Recording replaces this directory. It needs a live participant, a user token per person, and a runner that
-supplies `runCheck` with a `send` that goes out to the ledger and writes down every question and answer.
-**This repository does not ship that runner** — `run-check.ts` is the check itself, not a command, and the
-side that holds tokens is deliberately kept out of it.
+```bash
+make -C infra record        # in the local dev stack. It deletes this directory and writes it again
+```
 
-Two rules the recording has to keep, or the tape is worth less than no tape at all. **Record only when the
-check passes**: recording failing answers makes CI believe the same wrong thing. **Replay what was written**
-before keeping it, and refuse to leave behind a file that does not reproduce.
+It needs a live participant and user tokens. **It only records when the check passes** — recording failing
+answers would make CI believe the same wrong thing. It also replays what it wrote and refuses to leave a file
+behind that does not reproduce.
 
 When to re-record: when what we ask the ledger changes (the tape fails with "this question is not on the
 tape"), when Canton is upgraded, or when the seed changes.
