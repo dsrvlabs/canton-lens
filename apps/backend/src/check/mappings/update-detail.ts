@@ -51,6 +51,16 @@ const EVENT: Record<string, Rule<Event>> = {
   nodeId: app("the node's nodeId, or null when it sent none that is a number", (e) =>
     num(e.source.nodeId),
   ),
+  lastDescendantNodeId: app(
+    "an exercised event's lastDescendantNodeId, or null when it sent none that is a number; null for a created event, which has no subtree",
+    (e) => (e.exercised === null ? null : num(e.exercised.lastDescendantNodeId)),
+  ),
+  // **Derived, not sent.** The placement is read off the whole list (core's nest-update-events.ts), and a rule
+  // here sees one event. Recomputing the nesting would be a second decoder, which is not a check — the same
+  // ground templateSchema stands on below.
+  tree: unjudged(
+    "where the event sits among the events shown (depth · ancestorIndex · descendantCount) is derived over the whole list from nodeId and lastDescendantNodeId, and a rule here sees one event",
+  ),
   contractId: node("source.contractId"),
   templateId: node("source.templateId"),
   package: app(
