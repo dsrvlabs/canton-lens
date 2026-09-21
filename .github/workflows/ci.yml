@@ -3,7 +3,12 @@ name: CI
 on:
   push:
     branches: [main]
+  # `edited` is here for one reason: a stacked PR's base changes when the PR under it merges, and the default
+  # types (opened · synchronize · reopened) do not fire on that. Without it the checks keep the green they earned
+  # against the old base, and the merge is the first time the branch meets what main now holds. It also fires
+  # on a title or body edit, which costs a run and nothing else.
   pull_request:
+    types: [opened, synchronize, reopened, edited]
 
 # This workflow uses no secrets, and nothing here talks to a live participant or identity provider. The checks
 # that need a real node are run by hand against one. So a green light here means
