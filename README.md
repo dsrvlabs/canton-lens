@@ -53,7 +53,9 @@ and presents only the data returned for the selected identity.
   </tr>
 </table>
 
-Recent activity and timeline views cover bounded offset ranges. Data pruned by the participant is not recovered by the explorer.
+Recent activity lists look back over a window that widens until it holds 500 of the selected identity's
+transactions, up to 128,000 offsets; the timeline covers a chosen offset range. Data pruned by the participant is
+not recovered by the explorer.
 
 The Explorer reads the JSON Ledger API and nothing else. That API serves current state and a recent
 window of updates, so older history and full-text search are outside what these screens can answer.

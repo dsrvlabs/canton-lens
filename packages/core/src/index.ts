@@ -133,6 +133,16 @@ export { buildGetVersionRequest, callGetVersion } from "./ledger-request/request
 export { buildGetLedgerEndRequest, callGetLedgerEnd } from "./ledger-request/request-ledger-end.ts";
 export { buildGetPackageRequest, callGetPackage } from "./ledger-request/request-package.ts";
 export { buildListPackagesRequest, callListPackages } from "./ledger-request/request-packages.ts";
+export type { RecentUpdatesRead } from "./ledger-request/request-recent-updates.ts";
+export {
+  callGetRecentUpdates,
+  countTransactions,
+  RECENT_UPDATES_LOOKBACK,
+  RECENT_UPDATES_MAX_LOOKBACK,
+  RECENT_UPDATES_TARGET,
+  RECENT_UPDATES_WIDEN_FACTOR,
+  widenLookback,
+} from "./ledger-request/request-recent-updates.ts";
 export {
   buildGetUpdateByIdRequest,
   callGetUpdateById,

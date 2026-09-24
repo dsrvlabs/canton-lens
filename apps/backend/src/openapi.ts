@@ -4,7 +4,7 @@
 // **It is split into two layers.** The **shape** of response bodies is held by openapi-schemas.generated.ts, generated from the
 // TypeScript types of responses.ts (core types + the fields the router lays on), and referenced here via $ref — there is no place
 // for code and docs to diverge (`pnpm openapi:check`). Routes, parameters, status codes and **the explanation of “why this shape”**
-// are written here by hand — context such as “recent” being the (offset-500, offset] range does not come out of the types.
+// are written here by hand — context such as how “recent” is bounded does not come out of the types.
 // This is OpenAPI 3.1. 3.1 schemas are JSON Schema 2020-12, so a description can sit next to a $ref.
 import { responseSchemas } from "./openapi-schemas.generated.ts";
 
@@ -287,8 +287,9 @@ export const openApiDocument = {
           "200": ok(
             "UpdatesResponse",
             "The rows of buildRecentUpdates(core) (a list of created/archived events per update), filtered, paged, plus " +
-              "offset, beginExclusive. “Recent” is the (offset - 500, offset] range — not the full history " +
-              "— older history is not served. beginExclusive says “how far back did we look for recent”. An empty ledger (offset 0) " +
+              "offset, beginExclusive. " +
+              "“Recent” is a window that starts 500 offsets back and widens in steps (×4, up to 128,000 offsets) until it holds 500 of the viewer's transactions, reaches the ledger's start, or reaches that bound — not the full history; older history is not served. A pruned past ends the widening, not the read. " +
+              "beginExclusive says “how far back did we look for recent”. An empty ledger (offset 0) " +
               "answers with an empty page without calling the ledger.",
           ),
           "400": failure(
@@ -335,7 +336,7 @@ export const openApiDocument = {
         responses: {
           "200": ok(
             "TimelineResponse",
-            "buildLifelines(core) over two reads taken at the one offset: the (offset-500, offset] update window and the " +
+            "buildLifelines(core) over two reads taken at the one offset: the [from, offset] update window and the " +
               "active contracts. A lifetime carries where it started and ended as ledger offsets plus a state — archived (an " +
               "archive was seen in the window), alive (no archive, and it is in the active contracts) or unknown (no archive " +
               "seen and not active). unknown is not alive: an archived event carries no signatories or observers, so a " +
@@ -406,8 +407,8 @@ export const openApiDocument = {
               "rights cannot be obtained, the request fails with a status code (the home does not render without them); if a later source fails, only " +
               "that card becomes {status:unavailable, reason}. cards: with no parties, a single {status:no_party_rights}; otherwise activeContracts, " +
               "pendingOffers (my turn, unexpired, up to 5 previewed in order of nearest expiry) and tokens (based on the standard Holding interface; tokens " +
-              "from apps that do not implement the standard are not included). recent covers the (offset-500, offset] range, not the full history " +
-              "and older history is not served.",
+              "from apps that do not implement the standard are not included). recent: " +
+              "“Recent” is a window that starts 500 offsets back and widens in steps (×4, up to 128,000 offsets) until it holds 500 of the viewer's transactions, reaches the ledger's start, or reaches that bound — not the full history; older history is not served. A pruned past ends the widening, not the read.",
           ),
           "400": failure(
             "invalid_as_of (absent, or not an instant) · invalid_offset · offset_after_ledger_end · " +

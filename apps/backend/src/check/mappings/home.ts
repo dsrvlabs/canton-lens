@@ -34,10 +34,16 @@ import {
   wildcardAcsPages,
   wildcardUpdatePages,
 } from "./read-trace.ts";
-import { RECENT_UPDATE_EVENT_ROW, RECENT_UPDATE_ROW, readUpdates, type Update } from "./updates.ts";
+import {
+  RECENT_UPDATE_EVENT_ROW,
+  RECENT_UPDATE_ROW,
+  readUpdates,
+  recentWindowBegin,
+  refusedStep,
+  type Update,
+} from "./updates.ts";
 
 /** How far back "recent" reaches, and how many of it the list shows. Both constants live in the product. */
-const LOOKBACK = 500;
 const RECENT_LIMIT = 20;
 /** A deadline within a day is drawn as imminent. The design fixed the emphasis; this value is the code's. */
 const IMMINENT_MS = 24 * 60 * 60 * 1000;
@@ -469,7 +475,14 @@ export const homeMapping: Mapping<CheckContext> = {
       .sort(([ak, al], [bk, bl]) => (al < bl ? -1 : al > bl ? 1 : ak < bk ? -1 : 1))
       .map(([, label]) => label);
 
-    const read = readUpdates(wildcardUpdatePages(ctx.trace));
+    const updatePages = wildcardUpdatePages(ctx.trace);
+    if (refusedStep(updatePages)) {
+      return {
+        ok: false,
+        why: "the node refused a step of the window, and these rules do not describe where the window then starts",
+      };
+    }
+    const read = readUpdates(updatePages);
     if ("why" in read) return { ok: false, why: read.why };
     const updates = [...read.updates].sort(
       (a, b) => (num(b.value.offset) ?? 0) - (num(a.value.offset) ?? 0),
@@ -504,7 +517,10 @@ export const homeMapping: Mapping<CheckContext> = {
           times.length === 0
             ? buildObject(SPARK_EMPTY, undefined)
             : buildObject(SPARK_OK, { times }),
-        recent: buildObject(RECENT_OK, { updates, beginExclusive: Math.max(0, end - LOOKBACK) }),
+        recent: buildObject(RECENT_OK, {
+          updates,
+          beginExclusive: recentWindowBegin(end, updatePages),
+        }),
       }),
     };
   },
