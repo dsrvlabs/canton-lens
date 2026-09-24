@@ -73,6 +73,7 @@ export function questionProblems(url: string, trace: readonly NodeCall[], given:
   const end = rec(
     trace.find((call) => call.method === "GET" && call.path === "/v2/state/ledger-end")?.answer,
   ).offset;
+  const stepBegins = beginsOf(trace);
 
   for (const call of trace) {
     if (call.method !== "POST") continue;
@@ -126,11 +127,28 @@ export function questionProblems(url: string, trace: readonly NodeCall[], given:
       if (typeof at === "number" && at !== end) {
         problems.push(`${call.path} read the contracts at ${at}, not at the ledger end ${end}`);
       }
+      // **The recent window is asked for in abutting steps.** The first ends at the ledger end; each wider one
+      // ends exactly where an already-asked step began, so together they cover one range up to the end. A
+      // step that ends anywhere else is a read of some other moment.
       const to = rec(call.body).endInclusive;
-      if (typeof to === "number" && to !== end) {
+      if (typeof to === "number" && to !== end && !stepBegins.has(to)) {
         problems.push(`${call.path} read the updates up to ${to}, not to the ledger end ${end}`);
       }
     }
   }
   return problems;
 }
+
+/**
+ * Where each updates step began (exclusive). A wider step's end must be one of these — that is what makes
+ * the steps one window rather than reads of several moments.
+ */
+const beginsOf = (trace: readonly NodeCall[]): Set<number> => {
+  const begins = new Set<number>();
+  for (const call of trace) {
+    if (call.method !== "POST" || !call.path.startsWith("/v2/updates?")) continue;
+    const begin = rec(call.body).beginExclusive;
+    if (typeof begin === "number") begins.add(begin);
+  }
+  return begins;
+};

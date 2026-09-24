@@ -28,8 +28,46 @@ import {
   wildcardUpdatePages,
 } from "./read-trace.ts";
 
-/** How far back "recent" reaches. `UPDATES_LOOKBACK` in router.ts. */
+// **How far back "recent" reaches — the schedule in core's request-recent-updates.ts, stated again.** The
+// window starts LOOKBACK offsets before the ledger end. While it holds fewer than TARGET transactions and
+// has not reached the ledger's start, it widens WIDEN-fold, up to MAX_LOOKBACK. The product reads each step
+// as a separate node call; these rules only need where the window ended up.
 const LOOKBACK = 500;
+const TARGET = 500;
+const WIDEN = 4;
+const MAX_LOOKBACK = 128_000;
+
+/** The offsets of the transactions the node's pages hold — every step's, together. */
+const transactionOffsets = (pages: readonly { answer: unknown }[]): number[] =>
+  pages.flatMap((page) =>
+    arr(page.answer)
+      .map((item) => num(rec(rec(rec(rec(item).update).Transaction).value).offset))
+      .filter((offset): offset is number => offset !== null),
+  );
+
+/**
+ * Where the recent window starts, worked out from what the node's pages hold. Exported for the home
+ * mapping, which reads the same window.
+ */
+export function recentWindowBegin(end: number, pages: readonly { answer: unknown }[]): number {
+  const offsets = transactionOffsets(pages);
+  let lookback = LOOKBACK;
+  while (
+    offsets.filter((offset) => offset > end - lookback).length < TARGET &&
+    end - lookback > 0 &&
+    lookback < MAX_LOOKBACK
+  ) {
+    lookback = Math.min(MAX_LOOKBACK, lookback * WIDEN);
+  }
+  return Math.max(0, end - lookback);
+}
+
+/**
+ * A step the node refused ends the product's widening where it stands, and the pages then hold less than
+ * the schedule above would read. These rules do not describe that window, so the mapping says so by name.
+ */
+export const refusedStep = (pages: readonly { status: number }[]): boolean =>
+  pages.some((page) => page.status !== 200);
 /** The page the list is cut to when the query asks for no other. `UPDATES_PAGE_SIZE` in core. */
 const DEFAULT_LIMIT = 25;
 
@@ -120,6 +158,8 @@ const UPDATE_FILTER: Record<string, Rule<CheckContext>> = {
 type Answer = {
   ctx: CheckContext;
   end: number;
+  /** Where the window the node was asked for starts, worked out from the pages by recentWindowBegin. */
+  beginExclusive: number;
   /** Every update of the window that kept at least one event, newest first. */
   ordered: Update[];
   shown: Update[];
@@ -130,8 +170,8 @@ const UPDATES_RESPONSE: Record<string, Rule<Answer>> = {
     a.shown.map((update) => buildObject(RECENT_UPDATE_ROW, update)),
   ),
   beginExclusive: app(
-    "five hundred before the offset this was read at, or zero when the ledger is not that long",
-    (a) => Math.max(0, a.end - LOOKBACK),
+    "five hundred before the offset this was read at, widened fourfold — 2,000 · 8,000 · 32,000 · 128,000 — while the window held fewer than five hundred transactions and had not reached the ledger's start; zero when the ledger is not that long",
+    (a) => a.beginExclusive,
   ),
   total: app(
     "how many updates of the window kept an event, before any filter",
@@ -224,6 +264,12 @@ export const updatesMapping: Mapping<CheckContext> = {
     }
     const pages = wildcardUpdatePages(ctx.trace);
     if (pages.length === 0) return { ok: false, why: "the trace holds no unnarrowed updates call" };
+    if (refusedStep(pages)) {
+      return {
+        ok: false,
+        why: "the node refused a step of the window, and these rules do not describe where the window then starts",
+      };
+    }
     const read = readUpdates(pages);
     if ("why" in read) return { ok: false, why: read.why };
     const updates = read.updates;
@@ -236,7 +282,13 @@ export const updatesMapping: Mapping<CheckContext> = {
     const limit =
       asked !== null && /^[1-9][0-9]*$/.test(asked) ? Number.parseInt(asked, 10) : DEFAULT_LIMIT;
     const page = firstN(ordered, limit, { totalAt: "matched" });
-    const answer: Answer = { ctx, end, ordered, shown: page.shown };
+    const answer: Answer = {
+      ctx,
+      end,
+      beginExclusive: recentWindowBegin(end, pages),
+      ordered,
+      shown: page.shown,
+    };
     return { ok: true, pages: [page], body: buildObject(UPDATES_RESPONSE, answer) };
   },
 };

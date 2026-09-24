@@ -148,3 +148,45 @@ test("the party filter is found under the update format too, not only on a contr
   assert.equal(problems.length, 1);
   assert.match(problems[0] ?? "", /asked about 1 of this person's 2 parties/);
 });
+
+const updatesStep = (beginExclusive: number, endInclusive: number): NodeCall => ({
+  method: "POST",
+  path: "/v2/updates?limit=200",
+  body: {
+    updateFormat: {
+      includeTransactions: {
+        eventFormat: {
+          filtersByParty: {
+            "alice::1220": { cumulative: WILDCARD },
+            "acme::1220": { cumulative: WILDCARD },
+          },
+        },
+        transactionShape: "TRANSACTION_SHAPE_ACS_DELTA",
+      },
+    },
+    beginExclusive,
+    endInclusive,
+  },
+  status: 200,
+  answer: [],
+});
+
+test("the recent window may be asked for in abutting steps, each older one ending where the last began", () => {
+  // A quiet viewer on a busy participant: the first 500 offsets hold nothing of theirs, so the window
+  // widens. Every step but the first ends short of the ledger end — at the start of the step before it —
+  // and that is one window, not several moments.
+  const trace = [
+    end(100_000),
+    updatesStep(99_500, 100_000),
+    updatesStep(98_000, 99_500),
+    updatesStep(92_000, 98_000),
+  ];
+  assert.deepEqual(questionProblems("/api/updates", trace, holder), []);
+});
+
+test("an updates step that ends neither at the ledger end nor where another step began is some other moment", () => {
+  const trace = [end(100_000), updatesStep(99_500, 100_000), updatesStep(98_000, 99_400)];
+  const problems = questionProblems("/api/updates", trace, holder);
+  assert.equal(problems.length, 1);
+  assert.match(problems[0] ?? "", /read the updates up to 99400, not to the ledger end 100000/);
+});

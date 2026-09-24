@@ -33,7 +33,7 @@ export const SAID: Record<string, string> = {
   invalid_interface_id: "The interface id is empty — leave it out instead",
   invalid_limit: "The row limit must be a whole number of 1 or more",
   invalid_window: "The window's start must not come after its end",
-  window_too_wide: "That window is wider than 5,000 offsets — narrow it, or read it in parts",
+  window_too_wide: "That window is wider than 128,000 offsets — narrow it, or read it in parts",
 };
 
 // Failure name → phrase. A name not in the dictionary is exposed as is (that too is what the server said).

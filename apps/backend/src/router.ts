@@ -30,6 +30,7 @@ import {
   callGetAuthenticatedUser,
   callGetLedgerEnd,
   callGetPackage,
+  callGetRecentUpdates,
   callGetUpdateById,
   callGetUpdateByOffset,
   callGetUpdates,
@@ -42,6 +43,8 @@ import {
   groupLifelines,
   isWellFormedInterfaceId,
   parseTemplateFqn,
+  RECENT_UPDATES_LOOKBACK,
+  RECENT_UPDATES_MAX_LOOKBACK,
   readTokenClaims,
   searchPartyInActiveContracts,
   typeRecordFields,
@@ -106,21 +109,26 @@ const cachedLookup = (pkg: { kind: string; packageId?: string }): PackageSchema 
     ? (schemaCache.get(pkg.packageId) ?? null)
     : null;
 
-// The width of the offset range that “what happened recently” looks back over. This value is the definition of “recent” for this screen —
-// the point is not to scan from 0 (older history is not served),
-// and a past the participant has pruned does not come even within this width.
-const UPDATES_LOOKBACK = 500;
-// **The widest window the Timeline can draw at once.** The lists' window (UPDATES_LOOKBACK) is fixed
-// because it is the definition of "recent", but the Timeline is the screen where a range is chosen, so it
-// has to reach wider than that. Not unbounded, though — leaving from at 0 makes the node stream the whole
-// ledger, and that much never even reaches the browser. Past the bound it is not quietly trimmed but sent
-// back as a 400 (window_too_wide): if the requested range and the drawn range differ, the picture lies.
-const TIMELINE_MAX_SPAN = 5000;
-// **The width a Timeline draws when nothing is chosen.** With it set to 500, the same as the lists'
-// "recent" (UPDATES_LOOKBACK), the bars ran past the height of the first screen — the lists are read 25
-// rows at a time, but the picture spreads the whole range on one board. The first board opens light;
-// whoever wants to see wider passes from themselves.
-const TIMELINE_DEFAULT_SPAN = 100;
+// **What "recent" means for the lists** (/api/updates and the home's recent list) is decided in core,
+// `callGetRecentUpdates`: a window that starts RECENT_UPDATES_LOOKBACK offsets back and widens, in steps,
+// until it holds RECENT_UPDATES_TARGET of the viewer's transactions, reaches the ledger's start, or reaches
+// RECENT_UPDATES_MAX_LOOKBACK. The point is still not to scan from 0 (older history is not served), and a
+// past the participant has pruned ends the widening rather than the read. Every response says where its
+// window starts (beginExclusive), because the width is no longer a constant the screen could assume.
+//
+// **The widest window the Timeline can draw at once.** The Timeline is the screen where a range is chosen,
+// so it has a bound of its own — the same reach the lists have, so that a range a viewer picks can go as
+// far back as the recent window went on its own. Not unbounded: leaving from at 0 makes the node stream
+// the whole ledger, and that much never even reaches the browser. Past the bound it is not quietly trimmed
+// but sent back as a 400 (window_too_wide): if the requested range and the drawn range differ, the picture
+// lies.
+//
+// **When nothing is chosen, the Timeline draws the same window the lists call recent** — the one
+// callGetRecentUpdates widened until it held the viewer's transactions. It used to draw the latest 100
+// offsets, a width that on a shared participant was measured at about twenty-five minutes, so the screen
+// opened empty for a viewer whose contracts move a few times a day. A board that opens on nothing is not
+// light; it is blank.
+const TIMELINE_MAX_SPAN = RECENT_UPDATES_MAX_LOOKBACK;
 
 // **Negatives are not accepted.** Nothing here — offset, epoch ms, page size — has a meaning when negative,
 // yet the old regex let `-2` through, that value went straight to the ledger, and when the ledger rejected it
@@ -668,7 +676,9 @@ export async function routeRequest(
     const viewer = buildViewerParties(userResult.value, rightsResult.value);
     const ownParties = viewer.outcome === "view" ? viewer.parties.map((p) => p.party) : [];
     const offset = offsetResult.offset;
-    const beginExclusive = Math.max(0, offset - UPDATES_LOOKBACK);
+    // Where the recent window starts. The read below decides it (the window widens until it holds enough
+    // of the viewer's transactions); until then, and when nothing is read, it is the first step's start.
+    let beginExclusive = Math.max(0, offset - RECENT_UPDATES_LOOKBACK);
     // What to ask the ledger with, or null when there is nothing to ask. The same judgment resolveViewer
     // makes, and for the same reason: an empty party list is not by itself the absence of rights, because a
     // super reader holds no parties of their own and still reads every one of them. Without this the home
@@ -729,16 +739,12 @@ export async function routeRequest(
       if (offset <= 0) {
         updates = { ok: true, value: [] };
       } else {
-        const updatesResult: LedgerCallResult<unknown> = await callGetUpdates(
-          send,
-          filter,
-          beginExclusive,
-          offset,
-        );
+        const updatesResult = await callGetRecentUpdates(send, filter, offset);
         if (!updatesResult.ok) {
           updates = { ok: false, reason: updatesResult.reason };
         } else {
-          const envelope = toUpdateEntries(updatesResult.value);
+          beginExclusive = updatesResult.value.beginExclusive;
+          const envelope = toUpdateEntries(updatesResult.value.updates);
           updates = envelope.ok
             ? { ok: true, value: envelope.rows }
             : { ok: false, reason: envelope.reason };
@@ -901,17 +907,12 @@ export async function routeRequest(
         },
       };
     }
-    const beginExclusive = Math.max(0, offsetResult.offset - UPDATES_LOOKBACK);
-    const updatesResult: LedgerCallResult<unknown> = await callGetUpdates(
-      send,
-      viewer.filter,
-      beginExclusive,
-      offsetResult.offset,
-    );
+    const updatesResult = await callGetRecentUpdates(send, viewer.filter, offsetResult.offset);
     if (!updatesResult.ok) {
       return ledgerFailureToHttp(updatesResult.reason);
     }
-    const envelope = toUpdateEntries(updatesResult.value);
+    const beginExclusive = updatesResult.value.beginExclusive;
+    const envelope = toUpdateEntries(updatesResult.value.updates);
     if (!envelope.ok) {
       return { status: 502, body: { reason: "node_error" } };
     }
@@ -981,19 +982,15 @@ export async function routeRequest(
     // "from 50 to 50". (Exposing the ledger's own (begin, end] directly meant that an equal from and to gave
     // not a single point but an empty range, which came back as an error.) Only the ledger call uses an
     // exclusive start, and that conversion lives here in one place.
-    const from =
-      req.query.from !== undefined
-        ? Number.parseInt(req.query.from, 10)
-        : Math.max(0, end - TIMELINE_DEFAULT_SPAN) + 1;
+    const askedFrom = req.query.from !== undefined ? Number.parseInt(req.query.from, 10) : null;
     // A start past the end leaves no range to draw — that is a wrong input, not an empty answer. Equal is
     // a single point.
-    if (from > end && end > 0) {
+    if (askedFrom !== null && askedFrom > end && end > 0) {
       return { status: 400, body: { reason: "invalid_window" } };
     }
-    if (end - from + 1 > TIMELINE_MAX_SPAN) {
+    if (askedFrom !== null && end - askedFrom + 1 > TIMELINE_MAX_SPAN) {
       return { status: 400, body: { reason: "window_too_wide" } };
     }
-    const beginExclusive = Math.max(0, from - 1);
     const filterParties = parsePartyFilter(req.query.party);
     const filter = {
       ...(req.query.template !== undefined ? { template: req.query.template } : {}),
@@ -1006,16 +1003,31 @@ export async function routeRequest(
         body: { groups: [], total: 0, offset: end, from: 0, filter },
       };
     }
-    const updatesResult: LedgerCallResult<unknown> = await callGetUpdates(
-      send,
-      viewer.filter,
-      beginExclusive,
-      end,
-    );
-    if (!updatesResult.ok) {
-      return ledgerFailureToHttp(updatesResult.reason);
+    // A chosen start is read as chosen; an unchosen one is the recent window, and the read that finds it
+    // is the read of the window — one ledger walk, not two.
+    let from: number;
+    let updatesRaw: unknown;
+    if (askedFrom !== null) {
+      const updatesResult = await callGetUpdates(
+        send,
+        viewer.filter,
+        Math.max(0, askedFrom - 1),
+        end,
+      );
+      if (!updatesResult.ok) {
+        return ledgerFailureToHttp(updatesResult.reason);
+      }
+      from = askedFrom;
+      updatesRaw = updatesResult.value;
+    } else {
+      const recent = await callGetRecentUpdates(send, viewer.filter, end);
+      if (!recent.ok) {
+        return ledgerFailureToHttp(recent.reason);
+      }
+      from = recent.value.beginExclusive + 1;
+      updatesRaw = recent.value.updates;
     }
-    const updateEnvelope = toUpdateEntries(updatesResult.value);
+    const updateEnvelope = toUpdateEntries(updatesRaw);
     if (!updateEnvelope.ok) {
       return { status: 502, body: { reason: "node_error" } };
     }
