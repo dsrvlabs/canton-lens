@@ -579,8 +579,8 @@ export function PartyDetail({ partyId, hash }: { partyId: string; hash: string }
           }
           foot="One bar is one contract you and this party both appear on, from the update that created it to the update that archived it. The window ends where this party last moved, not at the ledger end - a party that has been quiet for a while would otherwise get half a screen of empty. A contract alive through the whole window has no event in it: it comes from the active contracts at the same offset, so its bar runs the full width with a faded left edge. One archived before the window is in neither source and cannot be drawn."
         >
-          {/* Only the start is chosen — the end is where this party last moved. Empty means 100 offsets
-              back from there. */}
+          {/* Only the start is chosen — the end is where this party last moved. Empty means the recent
+              window back from there: widened until it holds the recent transactions. */}
           <ToolbarForm id="party-timeline-window" onSubmit={applyFrom}>
             <label htmlFor="party-timeline-from">
               Offsets from{" "}
@@ -588,7 +588,7 @@ export function PartyDetail({ partyId, hash }: { partyId: string; hash: string }
                 id="party-timeline-from"
                 mono
                 narrow
-                placeholder="latest 100"
+                placeholder="recent"
                 value={fromInput}
                 onChange={(e) => setFromInput(e.target.value)}
               />

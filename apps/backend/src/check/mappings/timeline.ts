@@ -32,8 +32,7 @@ import {
   wildcardUpdatePages,
 } from "./read-trace.ts";
 
-/** The width drawn when the query names no start. `TIMELINE_DEFAULT_SPAN` in router.ts. */
-const DEFAULT_SPAN = 100;
+import { recentWindowBegin, refusedStep } from "./updates.ts";
 
 // ── One bar ──────────────────────────────────────────────────────────────────────
 
@@ -153,7 +152,7 @@ const TIMELINE_RESPONSE: Record<string, Rule<Answer>> = {
     a.groups.reduce((n, g) => n + g.lines.length, 0),
   ),
   from: app(
-    "the first offset of the window: the one the query asked for, or a hundred back from the end",
+    "the first offset of the window: the one the query asked for, or one past where the lists' recent window starts — the window that widened from five hundred offsets until it held five hundred of my transactions or reached the ledger's start",
     (a) => a.from,
   ),
   filter: app("the filter the query asked for", (a) => buildObject(UPDATE_FILTER, a.ctx)),
@@ -177,10 +176,17 @@ export const timelineMapping: Mapping<CheckContext> = {
     const asked = new URL(ctx.url, "http://check").searchParams.get("from");
     // The window is [from, offset], both ends included — that is how the screen's two boxes read. Only the
     // ledger call uses an exclusive start.
+    const updatePages = wildcardUpdatePages(ctx.trace);
+    if (refusedStep(updatePages)) {
+      return {
+        ok: false,
+        why: "the node refused a step of the window, and these rules do not describe where the window then starts",
+      };
+    }
     const from =
       asked !== null && /^[0-9]+$/.test(asked)
         ? Number.parseInt(asked, 10)
-        : Math.max(0, end - DEFAULT_SPAN) + 1;
+        : recentWindowBegin(end, updatePages) + 1;
     const filter = buildObject(UPDATE_FILTER, ctx) as Record<string, unknown>;
     if (Object.keys(filter).length > 0) {
       return { ok: false, why: "these rules do not describe a filtered question yet" };

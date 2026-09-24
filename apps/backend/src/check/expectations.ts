@@ -180,9 +180,9 @@ export const ROUND_ONE: readonly EndpointSpec[] = [
   },
   {
     template: "/api/timeline",
-    // Asks with the window **pinned.** The default (the most recent 100 offsets) is a number chosen for the
-    // screen's convenience, so it can change at any time, and when it does this check would ask for a range
-    // the recorded ledger does not hold and break for a reason that has nothing to do with the product.
+    // Asks with the window **pinned.** The default (the lists' recent window) depends on what the ledger
+    // holds, so it can change with the recording, and when it does this check would ask for a range the
+    // recorded ledger does not hold and break for a reason that has nothing to do with the product.
     // from=1 asks exactly for the range the tape holds (from 0) — the window is [from, offset] and only the
     // ledger call uses an exclusive start.
     url: () => "/api/timeline?from=1",

@@ -329,7 +329,7 @@ export const openApiDocument = {
             required: false,
             schema: { type: "integer", minimum: 0 },
             description:
-              "The first offset drawn. The window is [from, offset] — both ends included, so from == offset draws that one point rather than an empty range. Absent means the latest 100 offsets - narrower than the 500 the lists call recent, because a timeline lays a whole span out at once instead of paging it. It may not exceed offset, and the span may not exceed 5000: a wider one is refused rather than quietly narrowed, because a drawn window that differs from the requested one misreads as fact.",
+              "The first offset drawn. The window is [from, offset] — both ends included, so from == offset draws that one point rather than an empty range. Absent means the window the lists call recent: it starts 500 offsets back and widens (×4, up to 128,000) until it holds 500 of the viewer's transactions or reaches the ledger's start, and the response says where it landed. It may not exceed offset, and the span may not exceed 128,000: a wider one is refused rather than quietly narrowed, because a drawn window that differs from the requested one misreads as fact.",
           },
           offsetParameter,
         ],
@@ -347,7 +347,7 @@ export const openApiDocument = {
           ),
           "400": failure(
             "invalid_offset (from or offset is not a non-negative integer string) · offset_after_ledger_end · " +
-              "invalid_window (from is after offset) · window_too_wide (the span exceeds 5000 offsets).",
+              "invalid_window (from is after offset) · window_too_wide (the span exceeds 128,000 offsets).",
             ["invalid_offset", "offset_after_ledger_end", "invalid_window", "window_too_wide"],
           ),
           "401": unauthenticatedResponse,

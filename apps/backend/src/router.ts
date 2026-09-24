@@ -44,6 +44,7 @@ import {
   isWellFormedInterfaceId,
   parseTemplateFqn,
   RECENT_UPDATES_LOOKBACK,
+  RECENT_UPDATES_MAX_LOOKBACK,
   readTokenClaims,
   searchPartyInActiveContracts,
   typeRecordFields,
@@ -115,17 +116,19 @@ const cachedLookup = (pkg: { kind: string; packageId?: string }): PackageSchema 
 // past the participant has pruned ends the widening rather than the read. Every response says where its
 // window starts (beginExclusive), because the width is no longer a constant the screen could assume.
 //
-// **The widest window the Timeline can draw at once.** The lists' window is defined by content, but the
-// Timeline is the screen where a range is chosen, so it has its own bound. Not unbounded — leaving from at 0
-// makes the node stream the whole ledger, and that much never even reaches the browser. Past the bound it
-// is not quietly trimmed but sent back as a 400 (window_too_wide): if the requested range and the drawn
-// range differ, the picture lies.
-const TIMELINE_MAX_SPAN = 5000;
-// **The width a Timeline draws when nothing is chosen.** With it set to 500, the lists' first step, the
-// bars ran past the height of the first screen — the lists are read 25 rows at a time, but the picture
-// spreads the whole range on one board. The first board opens light; whoever wants to see wider passes
-// from themselves.
-const TIMELINE_DEFAULT_SPAN = 100;
+// **The widest window the Timeline can draw at once.** The Timeline is the screen where a range is chosen,
+// so it has a bound of its own — the same reach the lists have, so that a range a viewer picks can go as
+// far back as the recent window went on its own. Not unbounded: leaving from at 0 makes the node stream
+// the whole ledger, and that much never even reaches the browser. Past the bound it is not quietly trimmed
+// but sent back as a 400 (window_too_wide): if the requested range and the drawn range differ, the picture
+// lies.
+//
+// **When nothing is chosen, the Timeline draws the same window the lists call recent** — the one
+// callGetRecentUpdates widened until it held the viewer's transactions. It used to draw the latest 100
+// offsets, a width that on a shared participant was measured at about twenty-five minutes, so the screen
+// opened empty for a viewer whose contracts move a few times a day. A board that opens on nothing is not
+// light; it is blank.
+const TIMELINE_MAX_SPAN = RECENT_UPDATES_MAX_LOOKBACK;
 
 // **Negatives are not accepted.** Nothing here — offset, epoch ms, page size — has a meaning when negative,
 // yet the old regex let `-2` through, that value went straight to the ledger, and when the ledger rejected it
@@ -979,19 +982,15 @@ export async function routeRequest(
     // "from 50 to 50". (Exposing the ledger's own (begin, end] directly meant that an equal from and to gave
     // not a single point but an empty range, which came back as an error.) Only the ledger call uses an
     // exclusive start, and that conversion lives here in one place.
-    const from =
-      req.query.from !== undefined
-        ? Number.parseInt(req.query.from, 10)
-        : Math.max(0, end - TIMELINE_DEFAULT_SPAN) + 1;
+    const askedFrom = req.query.from !== undefined ? Number.parseInt(req.query.from, 10) : null;
     // A start past the end leaves no range to draw — that is a wrong input, not an empty answer. Equal is
     // a single point.
-    if (from > end && end > 0) {
+    if (askedFrom !== null && askedFrom > end && end > 0) {
       return { status: 400, body: { reason: "invalid_window" } };
     }
-    if (end - from + 1 > TIMELINE_MAX_SPAN) {
+    if (askedFrom !== null && end - askedFrom + 1 > TIMELINE_MAX_SPAN) {
       return { status: 400, body: { reason: "window_too_wide" } };
     }
-    const beginExclusive = Math.max(0, from - 1);
     const filterParties = parsePartyFilter(req.query.party);
     const filter = {
       ...(req.query.template !== undefined ? { template: req.query.template } : {}),
@@ -1004,16 +1003,31 @@ export async function routeRequest(
         body: { groups: [], total: 0, offset: end, from: 0, filter },
       };
     }
-    const updatesResult: LedgerCallResult<unknown> = await callGetUpdates(
-      send,
-      viewer.filter,
-      beginExclusive,
-      end,
-    );
-    if (!updatesResult.ok) {
-      return ledgerFailureToHttp(updatesResult.reason);
+    // A chosen start is read as chosen; an unchosen one is the recent window, and the read that finds it
+    // is the read of the window — one ledger walk, not two.
+    let from: number;
+    let updatesRaw: unknown;
+    if (askedFrom !== null) {
+      const updatesResult = await callGetUpdates(
+        send,
+        viewer.filter,
+        Math.max(0, askedFrom - 1),
+        end,
+      );
+      if (!updatesResult.ok) {
+        return ledgerFailureToHttp(updatesResult.reason);
+      }
+      from = askedFrom;
+      updatesRaw = updatesResult.value;
+    } else {
+      const recent = await callGetRecentUpdates(send, viewer.filter, end);
+      if (!recent.ok) {
+        return ledgerFailureToHttp(recent.reason);
+      }
+      from = recent.value.beginExclusive + 1;
+      updatesRaw = recent.value.updates;
     }
-    const updateEnvelope = toUpdateEntries(updatesResult.value);
+    const updateEnvelope = toUpdateEntries(updatesRaw);
     if (!updateEnvelope.ok) {
       return { status: 502, body: { reason: "node_error" } };
     }
