@@ -35,12 +35,73 @@ import { arr, fqn, myParties, num, rec, str, stringsOf } from "./read-trace.ts";
 // ── One event ────────────────────────────────────────────────────────────────────
 
 /** A created or an exercised node of the transaction, with which of the two it is kept apart. */
+type Placement = { depth: number; ancestorIndex: number | null; descendantCount: number };
+
 type Event = {
   created: Record<string, unknown> | null;
   exercised: Record<string, unknown> | null;
   source: Record<string, unknown>;
   // The viewer's own parties, in the order their rights list them — what `yours` is asked about.
   mine: readonly string[];
+  // Where this event stands among the events shown — computed over the whole list (placementsOf) and stamped
+  // on, so a rule that sees one event can state it.
+  tree: Placement;
+};
+
+// **The nesting, restated.** The node ids are a pre-order walk of the transaction, so an event stands under
+// an earlier exercise exactly when its node id falls in (nodeId, lastDescendantNodeId] of that exercise, and
+// the nearest such exercise is the one with the greatest node id. The product walks a stack once; this counts
+// intervals per event, so the two do not share a shape. And as the product does: a node id that is missing,
+// or ids not strictly ascending, nest nothing — every event a root.
+const placementsOf = (
+  nodes: readonly { nodeId: number | null; last: number | null; exercised: boolean }[],
+): Placement[] => {
+  const flat = nodes.map(() => ({ depth: 0, ancestorIndex: null, descendantCount: 0 }));
+  const ids: number[] = [];
+  for (const n of nodes) {
+    if (n.nodeId === null) return flat;
+    ids.push(n.nodeId);
+  }
+  if (ids.some((id, i) => i > 0 && id <= (ids[i - 1] ?? id))) return flat;
+  // An exercise opens a range only when something happened under it; a create never does.
+  const rangeEnd = (j: number): number | null => {
+    const n = nodes[j];
+    const id = ids[j];
+    if (n === undefined || id === undefined || !n.exercised || n.last === null || n.last <= id)
+      return null;
+    return n.last;
+  };
+  const encloses = (j: number, i: number): boolean => {
+    const end = rangeEnd(j);
+    const idJ = ids[j];
+    const idI = ids[i];
+    return end !== null && idJ !== undefined && idI !== undefined && idJ < idI && idI <= end;
+  };
+  return ids.map((_, i) => {
+    const ancestors = ids.map((_, j) => j).filter((j) => j < i && encloses(j, i));
+    const descendants = ids.map((_, k) => k).filter((k) => k > i && encloses(i, k)).length;
+    return {
+      depth: ancestors.length,
+      ancestorIndex: ancestors.length === 0 ? null : Math.max(...ancestors),
+      descendantCount: descendants,
+    };
+  });
+};
+
+// The three slots of an event's place, each compared on its own.
+const PLACEMENT: Record<string, Rule<Placement>> = {
+  depth: app(
+    "how many shown events enclose this one — 0 for a root of the shown tree",
+    (t) => t.depth,
+  ),
+  ancestorIndex: app(
+    "the position of the nearest shown event enclosing this one, or null when none does",
+    (t) => t.ancestorIndex,
+  ),
+  descendantCount: app(
+    "how many shown events fall under this one at any depth — 0 for a leaf and for every created event",
+    (t) => t.descendantCount,
+  ),
 };
 
 // **One party's capacities on one event**, restated from the node's own fields. This is the rule the
@@ -92,11 +153,9 @@ const EVENT: Record<string, Rule<Event>> = {
     "an exercised event's lastDescendantNodeId, or null when it sent none that is a number; null for a created event, which has no subtree",
     (e) => (e.exercised === null ? null : num(e.exercised.lastDescendantNodeId)),
   ),
-  // **Derived, not sent.** The placement is read off the whole list (core's nest-update-events.ts), and a rule
-  // here sees one event. Recomputing the nesting would be a second decoder, which is not a check — the same
-  // ground templateSchema stands on below.
-  tree: unjudged(
-    "where the event sits among the events shown (depth · ancestorIndex · descendantCount) is derived over the whole list from nodeId and lastDescendantNodeId, and a rule here sees one event",
+  tree: app(
+    "the event's place among the events shown, restated from the node ids (placementsOf): under the nearest earlier exercise whose (nodeId, lastDescendantNodeId] holds this node id; every event a root when a node id is missing or the ids are not strictly ascending",
+    (e) => buildObject(PLACEMENT, e.tree),
   ),
   yours: app(
     "for each of my parties, in the order my rights list them, its capacities on this event (rolesOf); a party with none is left out, and a viewer with no party of their own gets an empty list",
@@ -285,6 +344,7 @@ export const updateDetailMapping: Mapping<CheckContext> = {
     UpdateDetailResponse: UPDATE_DETAIL_RESPONSE,
     UpdateDetailHeader: HEADER,
     UpdateDetailEventWithSchema: EVENT,
+    UpdateEventPlacement: PLACEMENT,
     UpdateVisibilityReason: VISIBILITY_REASON,
     VisibilityReason: STANDING,
   },
@@ -325,7 +385,7 @@ export const updateDetailMapping: Mapping<CheckContext> = {
     }
 
     const mine = myParties(ctx.trace);
-    const events: Event[] = [];
+    const drafts: Omit<Event, "tree">[] = [];
     for (const rawEvent of arr(value.events)) {
       const created = rec(rawEvent).CreatedEvent;
       const exercised = rec(rawEvent).ExercisedEvent;
@@ -333,13 +393,25 @@ export const updateDetailMapping: Mapping<CheckContext> = {
       if (source === undefined) {
         return { ok: false, why: "an event is neither a CreatedEvent nor an ExercisedEvent" };
       }
-      events.push({
+      drafts.push({
         created: created === undefined ? null : rec(created),
         exercised: exercised === undefined ? null : rec(exercised),
         source: rec(source),
         mine,
       });
     }
+    // The place is read off the whole list, so the events are gathered first and placed after.
+    const placements = placementsOf(
+      drafts.map((d) => ({
+        nodeId: num(d.source.nodeId) ?? null,
+        last: d.exercised === null ? null : (num(d.exercised.lastDescendantNodeId) ?? null),
+        exercised: d.exercised !== null,
+      })),
+    );
+    const events: Event[] = drafts.map((d, i) => ({
+      ...d,
+      tree: placements[i] ?? { depth: 0, ancestorIndex: null, descendantCount: 0 },
+    }));
 
     // Gathered per party across the events, in the order my rights name them, and an event's position is
     // appended each time that party appears in it. The capacities come from rolesOf — the same rule each

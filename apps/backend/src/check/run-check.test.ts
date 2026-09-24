@@ -429,10 +429,8 @@ test("the slots no mapping judges are these, and nobody adds one quietly", () =>
       }
     }
   }
-  // Two reasons, and no third. Most are a value the package bytes decode to. The two `tree` slots are the
-  // other: a placement derived over the whole event list (core's nest-update-events.ts), which a rule that
-  // sees one event cannot restate. A new entry with a reason outside these two is the thing this test exists
-  // to make somebody look at.
+  // Every one of them is a value the package bytes decode to. There is no second reason on this list, and a
+  // new entry with a different reason is the thing this test exists to make somebody look at.
   assert.deepEqual(declined.sort(), [
     "/api/catalog/packages PackageRow.interfaces",
     "/api/catalog/packages PackageRow.lfVersion",
@@ -450,11 +448,9 @@ test("the slots no mapping judges are these, and nobody adds one quietly", () =>
     "/api/updates/by-offset/{offset} UpdateDetailEventWithSchema.choiceSchema",
     "/api/updates/by-offset/{offset} UpdateDetailEventWithSchema.schemaStatus",
     "/api/updates/by-offset/{offset} UpdateDetailEventWithSchema.templateSchema",
-    "/api/updates/by-offset/{offset} UpdateDetailEventWithSchema.tree",
     "/api/updates/{updateId} UpdateDetailEventWithSchema.choiceSchema",
     "/api/updates/{updateId} UpdateDetailEventWithSchema.schemaStatus",
     "/api/updates/{updateId} UpdateDetailEventWithSchema.templateSchema",
-    "/api/updates/{updateId} UpdateDetailEventWithSchema.tree",
   ]);
 });
 
