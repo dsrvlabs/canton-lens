@@ -1,0 +1,33 @@
+# Sourced by the nginx image's entrypoint before its envsubst step (a `.envsh` file is sourced, so
+# what this exports is visible to the template). It produces CSP_CONNECT_SRC, the one value the
+# nginx.conf.template does not know by itself: which origins the page may open connections to.
+#
+# The page talks to its own origin (`/api/*` and `/openapi.json` are forwarded from here). In the
+# browser-oidc profile it also fetches Discovery, the token endpoint and the JWKS from the identity
+# provider, so that provider's origin has to be named — and it is already named, as the issuer the
+# bundle was built with. compose.yaml passes VITE_OIDC_ISSUER through to this container for exactly
+# this line; nothing else in the image reads it. Only the origin is kept: the realm path is not part
+# of a connect-src source.
+#
+# Set explicitly, CSP_CONNECT_SRC wins over the derivation. That is for a deployment whose
+# provider serves the token endpoint from a different host than the issuer; it is not an
+# invitation to widen the list.
+
+if [ -z "${CSP_CONNECT_SRC:-}" ]; then
+  CSP_CONNECT_SRC="'self'"
+  if [ -n "${VITE_OIDC_ISSUER:-}" ]; then
+    case "$VITE_OIDC_ISSUER" in
+      http://*|https://*)
+        _scheme="${VITE_OIDC_ISSUER%%://*}"
+        _rest="${VITE_OIDC_ISSUER#*://}"
+        _host="${_rest%%/*}"
+        if [ -n "$_host" ]; then
+          CSP_CONNECT_SRC="'self' ${_scheme}://${_host}"
+        fi
+        unset _scheme _rest _host
+        ;;
+    esac
+  fi
+fi
+export CSP_CONNECT_SRC
+echo "[frontend] Content-Security-Policy connect-src ${CSP_CONNECT_SRC}"

@@ -181,7 +181,7 @@ refuses to start when any of them is defined at all.
 
 | Container | Holds | Port |
 |---|---|---|
-| `frontend` | nginx, the built bundle, `docker/nginx.conf`. No Node, no source | `EXPLORER_BIND`:`EXPLORER_PORT` → 80 |
+| `frontend` | nginx, the built bundle, `docker/nginx.conf.template`. No Node, no source | `EXPLORER_BIND`:`EXPLORER_PORT` → 80 |
 | `backend` | Node 24, workspace source, production dependencies. No frontend assets | unpublished; reachable from `frontend` only |
 
 The Backend image compiles nothing — Node runs the TypeScript in `apps/backend/src` and
@@ -220,8 +220,15 @@ Two further conditions are not settled by this file:
 - Pass no secret as a build argument. A build argument is recorded in the history of the stage that
   declares it, printed in build output, and kept in the build cache.
   `SHARED_IDENTITY_CLIENT_SECRET` is read at startup instead and stays out of both images.
-- Leave `BASE_PATH` unset. `docker/nginx.conf` serves the Explorer at the root; a prefix also needs
-  matching `location` blocks in that file.
+- Leave `BASE_PATH` unset. `docker/nginx.conf.template` serves the Explorer at the root; a prefix
+  also needs matching `location` blocks in that file.
+- nginx sends a Content-Security-Policy, `X-Content-Type-Options`, `X-Frame-Options`,
+  `Referrer-Policy` and `Permissions-Policy` on every answer (`docker/security-headers.conf`). The
+  policy admits the bundle and the one inline script in `apps/frontend/index.html` by hash; after
+  editing that script, rebuild and run `node docker/inline-script-hashes.mjs
+  apps/frontend/dist/index.html`, then update the hash in the template. In `browser-oidc` the
+  policy's `connect-src` is derived from `VITE_OIDC_ISSUER` at container start; a provider that
+  serves its token endpoint from another host needs `CSP_CONNECT_SRC` in `docker/.env`.
 - nginx forwards the `Authorization` header unchanged and makes no authentication decision. In
   `browser-oidc` the user's Canton token travels through it.
 - Review the [security checklist](security.md#deployment-checklist).
@@ -253,6 +260,8 @@ memory use on those responses.
 
 - Serve `apps/frontend/dist/` from the public origin and forward `/api/*` and `/openapi.json` to
   the Backend.
+- Send the same response headers the Docker image sends (`docker/security-headers.conf` and the
+  policy in `docker/nginx.conf.template`), adjusted to the host that serves them.
 - Use HTTPS, edge access controls, and rate limiting. Keep the Backend process port on loopback
   or a protected private network where possible.
 - Keep tokens, secrets, Authorization headers, and ledger response bodies out of logs and traces.

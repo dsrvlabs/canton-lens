@@ -130,6 +130,42 @@ jobs:
           # The Backend's own refusal — not nginx's 404, not a static file, not a 502.
           check "proxy /api"   /api/home      401 '"reason":"unauthenticated"'
           exit $fail
+      # docker/security-headers.conf is included per location, because nginx drops inherited
+      # add_header lines wherever a location has its own. So every location is asked, including
+      # the two that set cache headers and the two that forward to the Backend — the very places
+      # the headers go missing when someone adds a location and forgets the include.
+      - name: Every answer carries the security headers
+        env:
+          BASE: http://127.0.0.1:18080
+        run: |
+          fail=0
+          headers=$(mktemp)
+          for path in / /index.html /party/abc123 /assets/nothing-here.js /openapi.json /api/home; do
+            curl -sS -o /dev/null -D "$headers" "$BASE$path"
+            for header in "content-security-policy: default-src 'none'" "x-content-type-options: nosniff" "x-frame-options: DENY" "referrer-policy: no-referrer" "permissions-policy:"; do
+              if ! grep -qiF -- "$header" "$headers"; then
+                echo "FAIL $path lacks: $header"; fail=1
+              fi
+            done
+          done
+          # browser-oidc: the issuer's origin, and only its origin, joined the connect-src list.
+          curl -sS -o /dev/null -D "$headers" "$BASE/"
+          grep -iF "connect-src 'self' https://idp.invalid;" "$headers" || { echo "FAIL connect-src was not derived from VITE_OIDC_ISSUER"; cat "$headers"; fail=1; }
+          exit $fail
+      # The hash in the template admits one exact inline script. If index.html changed and the
+      # template did not, browsers would refuse the script silently; this is where it fails loudly.
+      - name: The CSP hash matches the built inline script
+        run: |
+          docker compose -f docker/compose.yaml cp frontend:/usr/share/nginx/html/index.html built-index.html
+          fail=0
+          for hash in $(node docker/inline-script-hashes.mjs built-index.html); do
+            if grep -qF -- "$hash" docker/nginx.conf.template; then
+              echo "ok   $hash"
+            else
+              echo "FAIL $hash is not in docker/nginx.conf.template"; fail=1
+            fi
+          done
+          exit $fail
       - if: failure()
         run: docker compose -f docker/compose.yaml logs --no-color
       - if: always()

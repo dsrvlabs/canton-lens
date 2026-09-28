@@ -9,6 +9,12 @@
 # What this server does not do: terminate TLS, hold a session, read or replace an Authorization
 # header, or make any authentication decision. It matches a path and forwards. Put it behind the
 # TLS, access-control and rate-limiting layer the selected profile requires — docs/security.md.
+#
+# This file is a template. The nginx image's entrypoint runs envsubst over /etc/nginx/templates
+# and writes the result to /etc/nginx/conf.d/default.conf at container start. Only variables
+# matching NGINX_ENVSUBST_FILTER (`^CSP_`, set in frontend.Dockerfile) are substituted, so the
+# `$host` and `$uri` below are nginx's own and untouched. The one substituted value is
+# ${CSP_CONNECT_SRC}, computed by csp-connect-src.envsh from the issuer the bundle was built with.
 
 server {
     listen 80;
@@ -18,6 +24,30 @@ server {
     index index.html;
 
     server_tokens off;
+
+    # ── What the browser may do with this page ────────────────────────────────────────────────
+    # The Browser OIDC profile keeps the user's Canton token in page memory, so a script that runs
+    # in this origin holds the token. The policy names the only scripts allowed to run: the bundle
+    # (`'self'`) and the one inline script in index.html, admitted by the hash of its exact text.
+    # A script injected anywhere else is refused by the browser before it runs.
+    #
+    # **Editing the inline script changes the hash.** It is the theme script at the top of
+    # apps/frontend/index.html. After any edit, rebuild and run
+    #   node docker/inline-script-hashes.mjs apps/frontend/dist/index.html
+    # and put the printed value here. The CI docker job compares the two and fails on a mismatch;
+    # a browser would otherwise refuse the script silently and the saved theme would stop applying.
+    #
+    # The rest of the policy is the closed list of what the page really loads: its own stylesheet
+    # plus React's inline style attributes (`style-src 'unsafe-inline'` covers attributes, not
+    # <style> injection by scripts, which `script-src` already refuses); its own images plus the
+    # SVG data: URIs in the design system's tokens.css; its own fonts (Pretendard is bundled, never a
+    # CDN); and connections to its own origin plus, in browser-oidc, the identity provider that
+    # Discovery, the token endpoint and the JWKS are fetched from. Nothing may frame this page.
+    #
+    # `set` rather than a literal in the snippet: nginx forgets a parent's add_header lines as soon
+    # as a location has one of its own, so the headers are included in every location, and a
+    # variable keeps the policy written once.
+    set $csp "default-src 'none'; script-src 'self' 'sha256-MuuF2uLqQUTBGInGr/IbnClJ43BH3JPWCsUSJTrNqNo='; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src ${CSP_CONNECT_SRC}; base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
 
     # The bundle is 350 kB of JavaScript before compression.
     gzip on;
@@ -34,11 +64,16 @@ server {
     # header passes through untouched: in browser-oidc the user's Canton token travels here, and
     # nothing in this file inspects, stores, or substitutes it. In shared-identity the browser
     # sends no token and the Backend refuses one that arrives anyway (409).
+    #
+    # The headers travel on these answers too. `nosniff` matters most here: a JSON body must never
+    # be read as a script, and the Backend's own content-type is honoured as written.
     location /api/ {
+        include /etc/nginx/snippets/security-headers.conf;
         proxy_pass http://backend:7600;
     }
 
     location = /openapi.json {
+        include /etc/nginx/snippets/security-headers.conf;
         proxy_pass http://backend:7600;
     }
 
@@ -48,12 +83,14 @@ server {
     # Cache-Control line, and a response carrying two of them states its policy twice.
     location /assets/ {
         try_files $uri =404;
+        include /etc/nginx/snippets/security-headers.conf;
         add_header Cache-Control "public, max-age=31536000, immutable";
     }
 
     # index.html names the current asset bundle. A cached copy would pin a browser to a build
     # whose hashed assets are gone.
     location = /index.html {
+        include /etc/nginx/snippets/security-headers.conf;
         add_header Cache-Control "no-cache";
     }
 
@@ -61,6 +98,7 @@ server {
     # file on disk. Deliver index.html and let it read the address. Vite's dev server does this
     # implicitly; here it is one line.
     location / {
+        include /etc/nginx/snippets/security-headers.conf;
         try_files $uri $uri/ /index.html;
     }
 }
