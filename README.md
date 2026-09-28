@@ -4,7 +4,7 @@
   <a href="LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-blue.svg"></a>
   <img alt="Node 22.18+" src="https://img.shields.io/badge/node-22.18%2B-brightgreen.svg">
   <img alt="pnpm 9" src="https://img.shields.io/badge/pnpm-9-f69220.svg">
-  <img alt="Canton 3.4" src="https://img.shields.io/badge/Canton-3.4-4b3fd6.svg">
+  <img alt="Canton 3.5" src="https://img.shields.io/badge/Canton-3.5-4b3fd6.svg">
 </p>
 
 <p align="center">A private explorer for Canton participant ledgers, scoped to the selected Canton identity's permissions.</p>
@@ -53,7 +53,9 @@ and presents only the data returned for the selected identity.
   </tr>
 </table>
 
-Recent activity and timeline views cover bounded offset ranges. Data pruned by the participant is not recovered by the explorer.
+Recent activity lists look back over a window that widens until it holds 500 of the selected identity's
+transactions, up to 128,000 offsets; the timeline covers a chosen offset range. Data pruned by the participant is
+not recovered by the explorer.
 
 The Explorer reads the JSON Ledger API and nothing else. That API serves current state and a recent
 window of updates, so older history and full-text search are outside what these screens can answer.

@@ -32,6 +32,7 @@ import { useSession } from "../session/SessionContext.tsx";
 import { LifelineChart } from "./TimelineChart.tsx";
 import { pickedTemplate, TEMPLATE_PINNED } from "./template-filter.ts";
 
+// **The fetching half.** It holds the session, the effect and the answer; it draws nothing.
 export function Timeline({ hash }: { hash: string }) {
   const { api, lastOffset, loading, generation, templates } = useSession();
   const templateOptions = (templates?.rows ?? []).map((r) => `${r.module}:${r.entity}`);
@@ -46,20 +47,6 @@ export function Timeline({ hash }: { hash: string }) {
 
   const [data, setData] = useState<TimelineResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [templateInput, setTemplateInput] = useState(template);
-  const [partyInput, setPartyInput] = useState(party);
-  const [endInput, setEndInput] = useState(endRaw);
-  const [fromInput, setFromInput] = useState(fromRaw);
-  const applied = useMemo(
-    () => ({ template, party, endRaw, fromRaw, generation }),
-    [template, party, endRaw, fromRaw, generation],
-  );
-  useEffect(() => {
-    setTemplateInput(applied.template);
-    setPartyInput(applied.party);
-    setEndInput(applied.endRaw);
-    setFromInput(applied.fromRaw);
-  }, [applied]);
 
   const ran = useRef<string | null>(null);
   useEffect(() => {
@@ -93,6 +80,53 @@ export function Timeline({ hash }: { hash: string }) {
     };
   }, [api, loading, generation, atParam, fromRaw, template, party]);
 
+  return (
+    <TimelineView
+      data={data}
+      error={error}
+      hash={hash}
+      templateOptions={templateOptions}
+      generation={generation}
+    />
+  );
+}
+
+// **The drawing half — a function of one answer and the address, and nothing else.** No session, no effect,
+// no clock, so a test can hand it the answer a real participant gave and look at the bars that come out.
+export function TimelineView({
+  data,
+  error,
+  hash,
+  templateOptions = [],
+  generation = 0,
+}: {
+  data: TimelineResponse | null;
+  error: string | null;
+  hash: string;
+  templateOptions?: readonly string[];
+  /** See `ContractsView` — a full re-read restores the draft fields from the address. */
+  generation?: number;
+}) {
+  const q = hashQuery(hash);
+  const template = q.get("template") ?? "";
+  const party = q.get("party") ?? "";
+  const endRaw = q.get("offset") ?? "";
+  const fromRaw = q.get("from") ?? "";
+  const [templateInput, setTemplateInput] = useState(template);
+  const [partyInput, setPartyInput] = useState(party);
+  const [endInput, setEndInput] = useState(endRaw);
+  const [fromInput, setFromInput] = useState(fromRaw);
+  const applied = useMemo(
+    () => ({ template, party, endRaw, fromRaw, generation }),
+    [template, party, endRaw, fromRaw, generation],
+  );
+  useEffect(() => {
+    setTemplateInput(applied.template);
+    setPartyInput(applied.party);
+    setEndInput(applied.endRaw);
+    setFromInput(applied.fromRaw);
+  }, [applied]);
+
   const submit = (event: FormEvent) => {
     event.preventDefault();
     setHashParams({
@@ -118,7 +152,7 @@ export function Timeline({ hash }: { hash: string }) {
             ? "contract lifetimes on the ledger offset axis"
             : `${total} ${total === 1 ? "contract" : "contracts"} · offsets ${fmtOffset(window.from)}–${fmtOffset(window.to)}`
         }
-        foot="One bar is one contract, from the update that created it to the update that archived it. The axis is the ledger offset, and the window is the latest 100 offsets unless you set one - what happened before it is not here. A bar with a faded left edge started before the window; a striped right end means the end is unknown, not that the contract is alive."
+        foot="One bar is one contract, from the update that created it to the update that archived it. The axis is the ledger offset, and unless you set a window it is the one that holds your recent transactions, widened back from the ledger end until it does - what happened before it is not here. A bar with a faded left edge started before the window; a striped right end means the end is unknown, not that the contract is alive."
       >
         <ToolbarForm id="tl-filters" onSubmit={submit}>
           <label htmlFor="tl-template">
@@ -144,7 +178,7 @@ export function Timeline({ hash }: { hash: string }) {
             />
           </label>
           {/* The window is a **range** and includes both ends — set them equal and it is that one point.
-            Leave both empty and it is the latest 100 offsets. The words (from · to) were dropped for
+            Leave both empty and it is the recent window the lists use. The words (from · to) were dropped for
             room: two fields side by side with a – between them read that way anyway. */}
           {/* The label says "offset" — inside the field it would be cut off at 120px, and without it
             there is no telling what the two numbers count. */}
@@ -154,7 +188,7 @@ export function Timeline({ hash }: { hash: string }) {
               id="tl-from"
               mono
               narrow
-              placeholder="latest 100"
+              placeholder="recent"
               value={fromInput}
               onChange={(e) => setFromInput(e.target.value)}
             />

@@ -3,10 +3,12 @@
 import type {
   HomeSource,
   LedgerCallResult,
+  LedgerPartyFilter,
   LedgerRequest,
   LedgerSend,
   NodeOffsetReading,
   PackageSchema,
+  ViewerScope,
 } from "@canton-lens/core";
 import {
   buildContractDetail,
@@ -28,6 +30,7 @@ import {
   callGetAuthenticatedUser,
   callGetLedgerEnd,
   callGetPackage,
+  callGetRecentUpdates,
   callGetUpdateById,
   callGetUpdateByOffset,
   callGetUpdates,
@@ -40,6 +43,8 @@ import {
   groupLifelines,
   isWellFormedInterfaceId,
   parseTemplateFqn,
+  RECENT_UPDATES_LOOKBACK,
+  RECENT_UPDATES_MAX_LOOKBACK,
   readTokenClaims,
   searchPartyInActiveContracts,
   typeRecordFields,
@@ -54,24 +59,15 @@ import {
 import { ledgerFailureToHttp } from "./ledger-failure-to-http.ts";
 import { withAuth } from "./ledger-send-with-token.ts";
 import type { RouterRequest, RouterResponse } from "./router-types.ts";
+import { matchRoute } from "./routes.ts";
 
-const CONTRACT_DETAIL_PATH = /^\/api\/contracts\/([^/]+)$/;
-const PARTY_PATH = /^\/api\/party\/([^/]+)$/;
+// The addresses themselves live in `routes.ts`, as one list this file and the check both read.
 // Update detail is a **point lookup**. By id, or by offset (the creating-update link from Contracts).
-const UPDATE_DETAIL_PATH = /^\/api\/updates\/([^/]+)$/;
-// `[0-9]+`, not `\d+` — the document-side pattern is written with the same characters (there `\d`
-// would also accept Unicode digits, which made the document and the code disagree).
-// It does not accept digits only — if `-2` fails to match the path it becomes “no such thing” (404), and the
-// place to say “the format is wrong” disappears. Match the path broadly and cut malformed values off with a
-// 400 at the validation site below.
-const UPDATE_BY_OFFSET_PATH = /^\/api\/updates\/by-offset\/([^/]+)$/;
 // The real shape of an update id. The multihash prefix `1220` (sha2-256, 32 bytes) + 64 hex characters = 68
 // characters (verified across all 30 updates on a real node). Passing a malformed one straight to
 // the ledger made the ledger answer 400, and that went out as a 502 — a caller's fault is cut off with a 400
 // in this layer. **If the hash changes, this length changes too.**
 const UPDATE_ID_SHAPE = /^1220[0-9a-f]{64}$/;
-// Reading the contract blueprint — package schema (decoder). A package is immutable by its id (= content hash), so once read it stays the same.
-const PACKAGE_SCHEMA_PATH = /^\/api\/packages\/([0-9a-f]{64})\/schema$/;
 
 // **Schema cache** — content-addressed (packageId), so the decoded *shape* is the same value for everyone.
 // “No caching of ledger data” (a v1 non-goal — if the app keeps data whose answer differs per person in one
@@ -113,21 +109,26 @@ const cachedLookup = (pkg: { kind: string; packageId?: string }): PackageSchema 
     ? (schemaCache.get(pkg.packageId) ?? null)
     : null;
 
-// The width of the offset range that “what happened recently” looks back over. This value is the definition of “recent” for this screen —
-// the point is not to scan from 0 (older history is not served),
-// and a past the participant has pruned does not come even within this width.
-const UPDATES_LOOKBACK = 500;
-// **The widest window the Timeline can draw at once.** The lists' window (UPDATES_LOOKBACK) is fixed
-// because it is the definition of "recent", but the Timeline is the screen where a range is chosen, so it
-// has to reach wider than that. Not unbounded, though — leaving from at 0 makes the node stream the whole
-// ledger, and that much never even reaches the browser. Past the bound it is not quietly trimmed but sent
-// back as a 400 (window_too_wide): if the requested range and the drawn range differ, the picture lies.
-const TIMELINE_MAX_SPAN = 5000;
-// **The width a Timeline draws when nothing is chosen.** With it set to 500, the same as the lists'
-// "recent" (UPDATES_LOOKBACK), the bars ran past the height of the first screen — the lists are read 25
-// rows at a time, but the picture spreads the whole range on one board. The first board opens light;
-// whoever wants to see wider passes from themselves.
-const TIMELINE_DEFAULT_SPAN = 100;
+// **What "recent" means for the lists** (/api/updates and the home's recent list) is decided in core,
+// `callGetRecentUpdates`: a window that starts RECENT_UPDATES_LOOKBACK offsets back and widens, in steps,
+// until it holds RECENT_UPDATES_TARGET of the viewer's transactions, reaches the ledger's start, or reaches
+// RECENT_UPDATES_MAX_LOOKBACK. The point is still not to scan from 0 (older history is not served), and a
+// past the participant has pruned ends the widening rather than the read. Every response says where its
+// window starts (beginExclusive), because the width is no longer a constant the screen could assume.
+//
+// **The widest window the Timeline can draw at once.** The Timeline is the screen where a range is chosen,
+// so it has a bound of its own — the same reach the lists have, so that a range a viewer picks can go as
+// far back as the recent window went on its own. Not unbounded: leaving from at 0 makes the node stream
+// the whole ledger, and that much never even reaches the browser. Past the bound it is not quietly trimmed
+// but sent back as a 400 (window_too_wide): if the requested range and the drawn range differ, the picture
+// lies.
+//
+// **When nothing is chosen, the Timeline draws the same window the lists call recent** — the one
+// callGetRecentUpdates widened until it held the viewer's transactions. It used to draw the latest 100
+// offsets, a width that on a shared participant was measured at about twenty-five minutes, so the screen
+// opened empty for a viewer whose contracts move a few times a day. A board that opens on nothing is not
+// light; it is blank.
+const TIMELINE_MAX_SPAN = RECENT_UPDATES_MAX_LOOKBACK;
 
 // **Negatives are not accepted.** Nothing here — offset, epoch ms, page size — has a meaning when negative,
 // yet the old regex let `-2` through, that value went straight to the ledger, and when the ledger rejected it
@@ -217,9 +218,39 @@ function decodePathSegment(raw: string): { ok: true; value: string } | { ok: fal
   }
 }
 
-async function resolveViewer(
-  send: LedgerSend,
-): Promise<{ ok: true; parties: string[] } | { ok: false; http: RouterResponse }> {
+// The viewer's party set, or the reason it cannot be used. The `no_party_rights` case carries neither
+// field on purpose — a caller cannot reach the ledger with an empty filter by accident; it has to answer
+// that case first.
+//
+// **The reader case carries two party-shaped fields and they are not the same question.**
+//
+//   filter      what to ask the ledger with. `{ parties }` for nearly everyone, `{ anyParty: true }` for a
+//               viewer holding CanReadAsAnyParty. Goes to callGetActiveContracts · callGetUpdates ·
+//               callGetUpdateById · callGetUpdateByOffset and nowhere else.
+//   ownParties  whose "mine" this is — the parties that answer "why can I see this", "did I send or receive
+//               it", "which of my parties are on it". Goes to the core builders. **Empty for a super
+//               reader**, who is reading as everyone and so is party to nothing.
+//
+// They used to be one array, which worked only while every viewer's answer to both was the same list.
+type ResolvedViewer =
+  | {
+      ok: true;
+      kind: "parties";
+      filter: LedgerPartyFilter;
+      ownParties: string[];
+      scope: ViewerScope;
+    }
+  | { ok: true; kind: "no_party_rights" }
+  | { ok: false; http: RouterResponse };
+
+// A ledger user with neither CanReadAs nor CanActAs has no party filter to query with. Sending the empty
+// filter anyway makes the participant reject the request, and this layer reads that rejection as
+// node_error (502) — a healthy node reported as broken. The circumstance is the viewer's rights, not the
+// node's state, so it is answered here, under the name core already gives it (buildHomeSummary's
+// cards.status).
+const noPartyRights = (): RouterResponse => ({ status: 403, body: { reason: "no_party_rights" } });
+
+async function resolveViewer(send: LedgerSend): Promise<ResolvedViewer> {
   const userResult: LedgerCallResult<unknown> = await callGetAuthenticatedUser(send);
   if (!userResult.ok) {
     return { ok: false, http: ledgerFailureToHttp(userResult.reason) };
@@ -238,7 +269,24 @@ async function resolveViewer(
     // so it is mapped to 502 (treated as a data problem on the ledger side).
     return { ok: false, http: { status: 502, body: { reason: "node_error" } } };
   }
-  return { ok: true, parties: view.parties.map((p) => p.party) };
+  const ownParties = view.parties.map((p) => p.party);
+  // **The scope decides what to ask with; the party list decides whose "mine" it is.** They are read
+  // separately because a viewer can hold both CanReadAsAnyParty and a CanReadAs of their own, and that
+  // viewer reads everything *and* has parties to call theirs. Deciding the filter on the list instead
+  // would quietly narrow them to their own parties while the screen above kept saying "whole instance".
+  const filter: LedgerPartyFilter =
+    view.scope === "instance-wide" ? { anyParty: true } : { parties: ownParties };
+
+  // **Holding no party of one's own is not the same as holding no rights.** A super reader has none and
+  // reads all of them. Judging on the empty list alone answered them 403 and made their response
+  // identical, byte for byte, to a viewer holding nothing.
+  //
+  // core is the only place that sees the raw rights, so it is the only place that can tell these two
+  // apart (build-viewer-parties.ts).
+  if (ownParties.length === 0 && view.scope !== "instance-wide") {
+    return { ok: true, kind: "no_party_rights" };
+  }
+  return { ok: true, kind: "parties", filter, ownParties, scope: view.scope };
 }
 
 async function resolveOffset(
@@ -268,14 +316,14 @@ async function resolveOffset(
 //
 async function readHomeAcs<T>(
   send: LedgerSend,
-  parties: readonly string[],
+  filter: LedgerPartyFilter,
   offset: number,
   envelope: (raw: unknown) => EnvelopeResult<T>,
   interfaceId?: string,
 ): Promise<HomeSource<T[]>> {
   const result: LedgerCallResult<unknown> = await callGetActiveContracts(
     send,
-    parties,
+    filter,
     offset,
     interfaceId,
   );
@@ -292,66 +340,55 @@ export async function routeRequest(
     return { status: 405, body: { reason: "method_not_allowed" } };
   }
 
-  const detailMatch = CONTRACT_DETAIL_PATH.exec(req.path);
-  const isSession = req.path === "/api/session";
-  const isContracts = req.path === "/api/contracts";
-  const isOffers = req.path === "/api/offers";
-  const isTemplateCatalog = req.path === "/api/catalog/templates";
-  const isPackageCatalog = req.path === "/api/catalog/packages";
-  const isNode = req.path === "/api/node";
-  const isSearch = req.path === "/api/search";
-  const isUpdates = req.path === "/api/updates";
-  const isTimeline = req.path === "/api/timeline";
-  const isHoldings = req.path === "/api/holdings";
-  const isPreapprovals = req.path === "/api/preapprovals";
-  const isHome = req.path === "/api/home";
-  const partyMatch = PARTY_PATH.exec(req.path);
-  const updateByOffsetMatch = UPDATE_BY_OFFSET_PATH.exec(req.path);
-  const updateDetailMatch = updateByOffsetMatch ? null : UPDATE_DETAIL_PATH.exec(req.path);
-  const schemaMatch = PACKAGE_SCHEMA_PATH.exec(req.path);
-  if (
-    !schemaMatch &&
-    !updateDetailMatch &&
-    !updateByOffsetMatch &&
-    !isHome &&
-    !isSession &&
-    !isContracts &&
-    !detailMatch &&
-    !isOffers &&
-    !isTemplateCatalog &&
-    !isPackageCatalog &&
-    !isNode &&
-    !isSearch &&
-    !isUpdates &&
-    !isTimeline &&
-    !isHoldings &&
-    !isPreapprovals &&
-    !partyMatch
-  ) {
+  // **One lookup against the route list decides the address.** Sixteen separate comparisons decided it before,
+  // and the 404 was their negation — a seventeenth address could be recognised here and left out of that
+  // negation, or the reverse. There is now a single answer, and whether this application has the address is
+  // the same question as which address it is.
+  const hit = matchRoute(req.path);
+  if (hit === null) {
     return { status: 404, body: { reason: "not_found" } };
   }
+  const at = (template: string): boolean => hit.template === template;
+  /** The captured segment of this address, still percent-encoded — or null if we are elsewhere. */
+  const segment = (template: string): string | null => (at(template) ? hit.captured : null);
+
+  const isSession = at("/api/session");
+  const isContracts = at("/api/contracts");
+  const isOffers = at("/api/offers");
+  const isTemplateCatalog = at("/api/catalog/templates");
+  const isPackageCatalog = at("/api/catalog/packages");
+  const isNode = at("/api/node");
+  const isSearch = at("/api/search");
+  const isUpdates = at("/api/updates");
+  const isTimeline = at("/api/timeline");
+  const isHoldings = at("/api/holdings");
+  const isPreapprovals = at("/api/preapprovals");
+  const isHome = at("/api/home");
+  const detailMatch = segment("/api/contracts/{contractId}");
+  const partyMatch = segment("/api/party/{partyId}");
+  const updateByOffsetMatch = segment("/api/updates/by-offset/{offset}");
+  const updateDetailMatch = segment("/api/updates/{updateId}");
+  const schemaMatch = segment("/api/packages/{packageId}/schema");
 
   if (req.ledgerToken === null) {
     return { status: 401, body: { reason: "unauthenticated" } };
   }
 
-  // The capture group of both regexes is ([^/]+), so if there is a match, group 1 is necessarily present too.
-  // noUncheckedIndexedAccess cannot read that, so it is narrowed with ?? "".
   let decodedPartyId = "";
-  if (partyMatch) {
-    const d = decodePathSegment(partyMatch[1] ?? "");
+  if (partyMatch !== null) {
+    const d = decodePathSegment(partyMatch);
     if (!d.ok) return { status: 400, body: { reason: "invalid_path" } };
     decodedPartyId = d.value;
   }
   let decodedContractId = "";
-  if (detailMatch) {
-    const d = decodePathSegment(detailMatch[1] ?? "");
+  if (detailMatch !== null) {
+    const d = decodePathSegment(detailMatch);
     if (!d.ok) return { status: 400, body: { reason: "invalid_path" } };
     decodedContractId = d.value;
   }
   let decodedUpdateId = "";
-  if (updateDetailMatch) {
-    const d = decodePathSegment(updateDetailMatch[1] ?? "");
+  if (updateDetailMatch !== null) {
+    const d = decodePathSegment(updateDetailMatch);
     if (!d.ok) return { status: 400, body: { reason: "invalid_path" } };
     decodedUpdateId = d.value;
   }
@@ -366,7 +403,7 @@ export async function routeRequest(
   const bad = (reason: string): RouterResponse => ({ status: 400, body: { reason } });
 
   // Excludes the four paths that do not take an offset — their contracts have no invalid_offset.
-  const takesOffset = !isSession && !isNode && !schemaMatch && !updateDetailMatch;
+  const takesOffset = !isSession && !isNode && schemaMatch === null && updateDetailMatch === null;
   if (
     takesOffset &&
     req.query.offset !== undefined &&
@@ -380,13 +417,13 @@ export async function routeRequest(
   // the meantime a 502 or 504 would go out instead of a 400. Shape has nothing to do with the
   // ledger. (It comes after the 401, though — there is no reason to teach an unauthenticated request about
   // our input format.)
-  if (updateDetailMatch && !UPDATE_ID_SHAPE.test(decodedUpdateId)) {
+  if (updateDetailMatch !== null && !UPDATE_ID_SHAPE.test(decodedUpdateId)) {
     return bad("invalid_path");
   }
   // The ledger accepts only offsets **greater than 0** for this point lookup (NON_POSITIVE_OFFSET). And a
   // notation with leading zeros is forbidden by the document — this stops `0000000000000168` from being
   // accepted on the strength of its value alone.
-  if (updateByOffsetMatch && !isPositiveIntegerString(updateByOffsetMatch[1] ?? "")) {
+  if (updateByOffsetMatch !== null && !isPositiveIntegerString(updateByOffsetMatch)) {
     return bad("invalid_offset");
   }
 
@@ -516,13 +553,16 @@ export async function routeRequest(
     if (!viewer.ok) {
       return viewer.http;
     }
+    if (viewer.kind === "no_party_rights") {
+      return noPartyRights();
+    }
     const offsetResult = await resolveOffset(send, req.query);
     if (!offsetResult.ok) {
       return offsetResult.http;
     }
     const acsResult: LedgerCallResult<unknown> = await callGetActiveContracts(
       send,
-      viewer.parties,
+      viewer.filter,
       offsetResult.offset,
     );
     // An ACS failure does not kill the whole request — only the sections that come from contracts (Contracts·Parties·Templates) become unavailable with a reason,
@@ -576,7 +616,7 @@ export async function routeRequest(
     if (classification.kind === "update_id") {
       const lookup: LedgerCallResult<unknown> = await callGetUpdateById(
         send,
-        viewer.parties,
+        viewer.filter,
         classification.updateId,
       );
       if (!lookup.ok) {
@@ -585,7 +625,7 @@ export async function routeRequest(
             ? { status: lookup.reason }
             : { status: "unavailable", reason: lookup.reason };
       } else {
-        const detail = buildUpdateDetail(lookup.value, viewer.parties);
+        const detail = buildUpdateDetail(lookup.value, viewer.ownParties);
         update = detail.ok
           ? { status: "found", view: detail.view }
           : { status: "unavailable", reason: detail.reason };
@@ -634,11 +674,26 @@ export async function routeRequest(
       return ledgerFailureToHttp(rightsResult.reason);
     }
     const viewer = buildViewerParties(userResult.value, rightsResult.value);
-    const parties = viewer.outcome === "view" ? viewer.parties.map((p) => p.party) : [];
+    const ownParties = viewer.outcome === "view" ? viewer.parties.map((p) => p.party) : [];
     const offset = offsetResult.offset;
-    const beginExclusive = Math.max(0, offset - UPDATES_LOOKBACK);
-    // If there are no parties there is nothing to ask the ledger — when filtersByParty is empty it is not that the answer is empty,
-    // the question does not hold. core names that circumstance no_party_rights.
+    // Where the recent window starts. The read below decides it (the window widens until it holds enough
+    // of the viewer's transactions); until then, and when nothing is read, it is the first step's start.
+    let beginExclusive = Math.max(0, offset - RECENT_UPDATES_LOOKBACK);
+    // What to ask the ledger with, or null when there is nothing to ask. The same judgment resolveViewer
+    // makes, and for the same reason: an empty party list is not by itself the absence of rights, because a
+    // super reader holds no parties of their own and still reads every one of them. Without this the home
+    // answered a super reader with a page of "no party rights" cards while its own viewer block, built from
+    // the same `viewer`, reported their scope as instance-wide.
+    const filter: LedgerPartyFilter | null =
+      viewer.outcome !== "view"
+        ? null
+        : viewer.scope === "instance-wide"
+          ? { anyParty: true }
+          : ownParties.length > 0
+            ? { parties: ownParties }
+            : null;
+    // When there is nothing to ask, the cards say so by name rather than carrying an empty filter to the
+    // node — an empty filtersByParty is not an empty answer, it is a question that does not hold.
     let contracts: HomeSource<readonly unknown[]> = { ok: false, reason: "no_party_rights" };
     let offers: HomeSource<{ contracts: unknown; interfaceId: string }> = {
       ok: false,
@@ -650,8 +705,8 @@ export async function routeRequest(
     };
     let updates: HomeSource<unknown> = { ok: false, reason: "no_party_rights" };
 
-    if (parties.length > 0) {
-      contracts = await readHomeAcs(send, parties, offset, toContractListEntries);
+    if (filter !== null) {
+      contracts = await readHomeAcs(send, filter, offset, toContractListEntries);
 
       // The two interfaces are passed as constants by the screen (the standard interfaces the Explorer knows).
       // If not passed, that card becomes “could not be fetched” and says why by name.
@@ -659,7 +714,7 @@ export async function routeRequest(
       if (offerInterfaceId === undefined) {
         offers = { ok: false, reason: "interface_id_not_provided" };
       } else {
-        const read = await readHomeAcs(send, parties, offset, toRawCreatedEvents, offerInterfaceId);
+        const read = await readHomeAcs(send, filter, offset, toRawCreatedEvents, offerInterfaceId);
         offers = read.ok
           ? { ok: true, value: { contracts: read.value, interfaceId: offerInterfaceId } }
           : read;
@@ -670,7 +725,7 @@ export async function routeRequest(
       } else {
         const read = await readHomeAcs(
           send,
-          parties,
+          filter,
           offset,
           toRawCreatedEvents,
           holdingInterfaceId,
@@ -684,16 +739,12 @@ export async function routeRequest(
       if (offset <= 0) {
         updates = { ok: true, value: [] };
       } else {
-        const updatesResult: LedgerCallResult<unknown> = await callGetUpdates(
-          send,
-          parties,
-          beginExclusive,
-          offset,
-        );
+        const updatesResult = await callGetRecentUpdates(send, filter, offset);
         if (!updatesResult.ok) {
           updates = { ok: false, reason: updatesResult.reason };
         } else {
-          const envelope = toUpdateEntries(updatesResult.value);
+          beginExclusive = updatesResult.value.beginExclusive;
+          const envelope = toUpdateEntries(updatesResult.value.updates);
           updates = envelope.ok
             ? { ok: true, value: envelope.rows }
             : { ok: false, reason: envelope.reason };
@@ -764,9 +815,12 @@ export async function routeRequest(
     if (!viewer.ok) {
       return viewer.http;
     }
+    if (viewer.kind === "no_party_rights") {
+      return noPartyRights();
+    }
     const acsResult: LedgerCallResult<unknown> = await callGetActiveContracts(
       send,
-      viewer.parties,
+      viewer.filter,
       offsetResult.offset,
     );
     if (!acsResult.ok) {
@@ -802,10 +856,11 @@ export async function routeRequest(
     // Passes **all** of the viewer's parties. For a while only primaryParty was passed, and for someone
     // with several parties the rest of their own parties showed up as “counterparties” (constraint ① in packages/core/src/index.ts).
     // What is absent has no key at all (exactOptionalPropertyTypes).
-    const listResult = buildContractList(envelope.rows, viewer.parties, {
+    const listResult = buildContractList(envelope.rows, viewer.ownParties, {
       ...(pageSize !== undefined ? { pageSize } : {}),
       ...(after !== undefined ? { after } : {}),
       filter,
+      readsAsAnyParty: viewer.scope === "instance-wide" && viewer.ownParties.length === 0,
     });
     if (!listResult.ok) {
       return { status: 502, body: { reason: "node_error" } };
@@ -830,6 +885,9 @@ export async function routeRequest(
     if (!viewer.ok) {
       return viewer.http;
     }
+    if (viewer.kind === "no_party_rights") {
+      return noPartyRights();
+    }
     const offsetResult = await resolveOffset(send, req.query);
     if (!offsetResult.ok) {
       return offsetResult.http;
@@ -849,17 +907,12 @@ export async function routeRequest(
         },
       };
     }
-    const beginExclusive = Math.max(0, offsetResult.offset - UPDATES_LOOKBACK);
-    const updatesResult: LedgerCallResult<unknown> = await callGetUpdates(
-      send,
-      viewer.parties,
-      beginExclusive,
-      offsetResult.offset,
-    );
+    const updatesResult = await callGetRecentUpdates(send, viewer.filter, offsetResult.offset);
     if (!updatesResult.ok) {
       return ledgerFailureToHttp(updatesResult.reason);
     }
-    const envelope = toUpdateEntries(updatesResult.value);
+    const beginExclusive = updatesResult.value.beginExclusive;
+    const envelope = toUpdateEntries(updatesResult.value.updates);
     if (!envelope.ok) {
       return { status: 502, body: { reason: "node_error" } };
     }
@@ -917,6 +970,9 @@ export async function routeRequest(
     if (!viewer.ok) {
       return viewer.http;
     }
+    if (viewer.kind === "no_party_rights") {
+      return noPartyRights();
+    }
     const offsetResult = await resolveOffset(send, req.query);
     if (!offsetResult.ok) {
       return offsetResult.http;
@@ -926,19 +982,15 @@ export async function routeRequest(
     // "from 50 to 50". (Exposing the ledger's own (begin, end] directly meant that an equal from and to gave
     // not a single point but an empty range, which came back as an error.) Only the ledger call uses an
     // exclusive start, and that conversion lives here in one place.
-    const from =
-      req.query.from !== undefined
-        ? Number.parseInt(req.query.from, 10)
-        : Math.max(0, end - TIMELINE_DEFAULT_SPAN) + 1;
+    const askedFrom = req.query.from !== undefined ? Number.parseInt(req.query.from, 10) : null;
     // A start past the end leaves no range to draw — that is a wrong input, not an empty answer. Equal is
     // a single point.
-    if (from > end && end > 0) {
+    if (askedFrom !== null && askedFrom > end && end > 0) {
       return { status: 400, body: { reason: "invalid_window" } };
     }
-    if (end - from + 1 > TIMELINE_MAX_SPAN) {
+    if (askedFrom !== null && end - askedFrom + 1 > TIMELINE_MAX_SPAN) {
       return { status: 400, body: { reason: "window_too_wide" } };
     }
-    const beginExclusive = Math.max(0, from - 1);
     const filterParties = parsePartyFilter(req.query.party);
     const filter = {
       ...(req.query.template !== undefined ? { template: req.query.template } : {}),
@@ -951,16 +1003,31 @@ export async function routeRequest(
         body: { groups: [], total: 0, offset: end, from: 0, filter },
       };
     }
-    const updatesResult: LedgerCallResult<unknown> = await callGetUpdates(
-      send,
-      viewer.parties,
-      beginExclusive,
-      end,
-    );
-    if (!updatesResult.ok) {
-      return ledgerFailureToHttp(updatesResult.reason);
+    // A chosen start is read as chosen; an unchosen one is the recent window, and the read that finds it
+    // is the read of the window — one ledger walk, not two.
+    let from: number;
+    let updatesRaw: unknown;
+    if (askedFrom !== null) {
+      const updatesResult = await callGetUpdates(
+        send,
+        viewer.filter,
+        Math.max(0, askedFrom - 1),
+        end,
+      );
+      if (!updatesResult.ok) {
+        return ledgerFailureToHttp(updatesResult.reason);
+      }
+      from = askedFrom;
+      updatesRaw = updatesResult.value;
+    } else {
+      const recent = await callGetRecentUpdates(send, viewer.filter, end);
+      if (!recent.ok) {
+        return ledgerFailureToHttp(recent.reason);
+      }
+      from = recent.value.beginExclusive + 1;
+      updatesRaw = recent.value.updates;
     }
-    const updateEnvelope = toUpdateEntries(updatesResult.value);
+    const updateEnvelope = toUpdateEntries(updatesRaw);
     if (!updateEnvelope.ok) {
       return { status: 502, body: { reason: "node_error" } };
     }
@@ -979,7 +1046,7 @@ export async function routeRequest(
     }
     const acsResult: LedgerCallResult<unknown> = await callGetActiveContracts(
       send,
-      viewer.parties,
+      viewer.filter,
       end,
     );
     if (!acsResult.ok) {
@@ -990,9 +1057,10 @@ export async function routeRequest(
       return { status: 502, body: { reason: "node_error" } };
     }
     // pageSize is the whole of the visible set for the same reason as above.
-    const listResult = buildContractList(acsEnvelope.rows, viewer.parties, {
+    const listResult = buildContractList(acsEnvelope.rows, viewer.ownParties, {
       pageSize: Math.max(1, acsEnvelope.rows.length),
       filter,
+      readsAsAnyParty: viewer.scope === "instance-wide" && viewer.ownParties.length === 0,
     });
     if (!listResult.ok) {
       return { status: 502, body: { reason: "node_error" } };
@@ -1012,9 +1080,9 @@ export async function routeRequest(
     };
   }
 
-  if (schemaMatch) {
+  if (schemaMatch !== null) {
     // The schema is the same value for everyone, but downloading the package requires a token — this route also sits behind the 401.
-    const source = await loadSchema(send, schemaMatch[1] ?? "");
+    const source = await loadSchema(send, schemaMatch);
     if (source.status !== "ok") {
       // The reason it could not be read, as is — an unsupported LF version (unsupported_lf_version:1.x) is not a 502 but a circumstance inside a 200: the node is fine.
       if (
@@ -1024,7 +1092,7 @@ export async function routeRequest(
       ) {
         return {
           status: 200,
-          body: { status: "unavailable", reason: source.reason, packageId: schemaMatch[1] },
+          body: { status: "unavailable", reason: source.reason, packageId: schemaMatch },
         };
       }
       return ledgerFailureToHttp(source.reason as Parameters<typeof ledgerFailureToHttp>[0]);
@@ -1032,24 +1100,24 @@ export async function routeRequest(
     return { status: 200, body: { status: "ok", ...source.schema } };
   }
 
-  if (updateDetailMatch || updateByOffsetMatch) {
+  if (updateDetailMatch !== null || updateByOffsetMatch !== null) {
     // **Update detail is a point lookup** (LEDGER_EFFECTS) — even outside the list range it opens as long as the participant retains it. A pruned past is
     // named pruned (410) by core, and absent or not visible is a single 404 (the v1 rule of not distinguishing “absent” from “cannot see”).
     const viewer = await resolveViewer(send);
     if (!viewer.ok) {
       return viewer.http;
     }
-    const lookup: LedgerCallResult<unknown> = updateByOffsetMatch
-      ? await callGetUpdateByOffset(
-          send,
-          viewer.parties,
-          Number.parseInt(updateByOffsetMatch[1] ?? "0", 10),
-        )
-      : await callGetUpdateById(send, viewer.parties, decodedUpdateId);
+    if (viewer.kind === "no_party_rights") {
+      return noPartyRights();
+    }
+    const lookup: LedgerCallResult<unknown> =
+      updateByOffsetMatch !== null
+        ? await callGetUpdateByOffset(send, viewer.filter, Number.parseInt(updateByOffsetMatch, 10))
+        : await callGetUpdateById(send, viewer.filter, decodedUpdateId);
     if (!lookup.ok) {
       return ledgerFailureToHttp(lookup.reason);
     }
-    const detail = buildUpdateDetail(lookup.value, viewer.parties);
+    const detail = buildUpdateDetail(lookup.value, viewer.ownParties);
     if (!detail.ok) {
       return { status: 502, body: { reason: "node_error" } };
     }
@@ -1113,6 +1181,9 @@ export async function routeRequest(
     if (!viewer.ok) {
       return viewer.http;
     }
+    if (viewer.kind === "no_party_rights") {
+      return noPartyRights();
+    }
     const offsetResult = await resolveOffset(send, req.query);
     if (!offsetResult.ok) {
       return offsetResult.http;
@@ -1122,7 +1193,7 @@ export async function routeRequest(
     const holdingInterfaceId = isHoldings ? req.query.holdingInterfaceId : undefined;
     const acsResult: LedgerCallResult<unknown> = await callGetActiveContracts(
       send,
-      viewer.parties,
+      viewer.filter,
       offsetResult.offset,
       holdingInterfaceId,
     );
@@ -1134,7 +1205,7 @@ export async function routeRequest(
       if (!viewRows.ok) {
         return { status: 502, body: { reason: "node_error" } };
       }
-      const result = buildTokenHoldings(viewRows.rows, viewer.parties, { holdingInterfaceId });
+      const result = buildTokenHoldings(viewRows.rows, viewer.ownParties, { holdingInterfaceId });
       return {
         status: 200,
         body: { ...result, offset: offsetResult.offset },
@@ -1153,8 +1224,8 @@ export async function routeRequest(
     // The viewer parties must be passed so that “is it mine” is put in the value — the same reason as the direction of offers.
     // It is the final value on which core has already finished judging — even if unavailable, it is carried in a 200 as is.
     const result = isHoldings
-      ? buildTokenHoldings(entries, viewer.parties)
-      : buildTransferPreapprovals(entries, req.query.asOf as string, viewer.parties);
+      ? buildTokenHoldings(entries, viewer.ownParties)
+      : buildTransferPreapprovals(entries, req.query.asOf as string, viewer.ownParties);
     return {
       status: 200,
       body: { ...result, offset: offsetResult.offset },
@@ -1168,13 +1239,16 @@ export async function routeRequest(
     if (!viewer.ok) {
       return viewer.http;
     }
+    if (viewer.kind === "no_party_rights") {
+      return noPartyRights();
+    }
     const offsetResult = await resolveOffset(send, req.query);
     if (!offsetResult.ok) {
       return offsetResult.http;
     }
     const acsResult: LedgerCallResult<unknown> = await callGetActiveContracts(
       send,
-      viewer.parties,
+      viewer.filter,
       offsetResult.offset,
       interfaceId,
     );
@@ -1187,7 +1261,7 @@ export async function routeRequest(
     }
     // The viewer parties must be passed so that the direction (received or sent) is put in the value. If not passed, core
     // answers unknown, and then the screen ends up judging again — preventing that is what this argument is for.
-    const result = buildTransferOffers(envelope.rows, interfaceId, asOf, viewer.parties);
+    const result = buildTransferOffers(envelope.rows, interfaceId, asOf, viewer.ownParties);
     // It is the final value on which core has already finished judging — even if kind:"unavailable" it is not
     // turned into a 502 but carried in a 200 as is.
     return { status: 200, body: result };
@@ -1198,13 +1272,16 @@ export async function routeRequest(
     if (!viewer.ok) {
       return viewer.http;
     }
+    if (viewer.kind === "no_party_rights") {
+      return noPartyRights();
+    }
     const offsetResult = await resolveOffset(send, req.query);
     if (!offsetResult.ok) {
       return offsetResult.http;
     }
     const acsResult: LedgerCallResult<unknown> = await callGetActiveContracts(
       send,
-      viewer.parties,
+      viewer.filter,
       offsetResult.offset,
     );
     if (!acsResult.ok) {
@@ -1254,13 +1331,16 @@ export async function routeRequest(
     if (!viewer.ok) {
       return viewer.http;
     }
+    if (viewer.kind === "no_party_rights") {
+      return noPartyRights();
+    }
     const offsetResult = await resolveOffset(send, req.query);
     if (!offsetResult.ok) {
       return offsetResult.http;
     }
     const acsResult: LedgerCallResult<unknown> = await callGetActiveContracts(
       send,
-      viewer.parties,
+      viewer.filter,
       offsetResult.offset,
     );
     if (!acsResult.ok) {
@@ -1356,7 +1436,7 @@ export async function routeRequest(
     return { status: 200, body: { ...snapshot, ledgerEnd: current } };
   }
 
-  if (partyMatch) {
+  if (partyMatch !== null) {
     const partyId = decodedPartyId;
     const offsetResult = await resolveOffset(send, req.query);
     if (!offsetResult.ok) {
@@ -1366,9 +1446,12 @@ export async function routeRequest(
     if (!viewer.ok) {
       return viewer.http;
     }
+    if (viewer.kind === "no_party_rights") {
+      return noPartyRights();
+    }
     const acsResult: LedgerCallResult<unknown> = await callGetActiveContracts(
       send,
-      viewer.parties,
+      viewer.filter,
       offsetResult.offset,
     );
     if (!acsResult.ok) {
@@ -1397,9 +1480,12 @@ export async function routeRequest(
   if (!viewer.ok) {
     return viewer.http;
   }
+  if (viewer.kind === "no_party_rights") {
+    return noPartyRights();
+  }
   const acsResult: LedgerCallResult<unknown> = await callGetActiveContracts(
     send,
-    viewer.parties,
+    viewer.filter,
     offsetResult.offset,
   );
   if (!acsResult.ok) {
@@ -1417,7 +1503,7 @@ export async function routeRequest(
     return { status: 404, body: { reason: "not_found" } };
   }
   // seenBy is **my** parties that see this contract (witnessParties = the parties among those requested that see it).
-  const detailResult = buildContractDetail(found.entry, viewer.parties);
+  const detailResult = buildContractDetail(found.entry, viewer.ownParties);
   if (!detailResult.ok) {
     return { status: 502, body: { reason: "node_error" } };
   }

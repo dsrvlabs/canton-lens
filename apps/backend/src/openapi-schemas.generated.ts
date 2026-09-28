@@ -801,6 +801,7 @@ export const responseSchemas = {
       "unreachable",
       "offset_after_ledger_end",
       "pruned",
+      "too_many_elements",
     ],
   },
   LfField: {
@@ -3525,6 +3526,31 @@ export const responseSchemas = {
       nodeId: {
         type: ["number", "null"],
       },
+      lastDescendantNodeId: {
+        type: ["number", "null"],
+      },
+      yours: {
+        type: "array",
+        items: {
+          $ref: "#/components/schemas/VisibilityReason",
+        },
+      },
+      tree: {
+        $ref: "#/components/schemas/UpdateEventPlacement",
+      },
+      divulgedTo: {
+        anyOf: [
+          {
+            type: "array",
+            items: {
+              type: "string",
+            },
+          },
+          {
+            type: "null",
+          },
+        ],
+      },
       contractId: {
         type: "string",
       },
@@ -3607,9 +3633,11 @@ export const responseSchemas = {
       "choiceSchema",
       "consuming",
       "contractId",
+      "divulgedTo",
       "entity",
       "interfaceId",
       "kind",
+      "lastDescendantNodeId",
       "module",
       "nodeId",
       "observers",
@@ -3619,7 +3647,9 @@ export const responseSchemas = {
       "signatories",
       "templateId",
       "templateSchema",
+      "tree",
       "witnessParties",
+      "yours",
     ],
   },
   UpdateDetailHeader: {
@@ -3711,6 +3741,17 @@ export const responseSchemas = {
                 required: ["status"],
                 additionalProperties: false,
               },
+              {
+                type: "object",
+                properties: {
+                  status: {
+                    type: "string",
+                    const: "no_own_parties",
+                  },
+                },
+                required: ["status"],
+                additionalProperties: false,
+              },
             ],
           },
           readAt: {
@@ -3748,6 +3789,22 @@ export const responseSchemas = {
         required: ["kind", "offset", "readAt", "updateId"],
       },
     ],
+  },
+  UpdateEventPlacement: {
+    type: "object",
+    properties: {
+      depth: {
+        type: "number",
+      },
+      ancestorIndex: {
+        type: ["number", "null"],
+      },
+      descendantCount: {
+        type: "number",
+      },
+    },
+    required: ["depth", "ancestorIndex", "descendantCount"],
+    additionalProperties: false,
   },
   UpdateFilter: {
     type: "object",
@@ -3932,6 +3989,17 @@ export const responseSchemas = {
         properties: {
           status: {
             type: "string",
+            const: "no_own_parties",
+          },
+        },
+        required: ["status"],
+        additionalProperties: false,
+      },
+      {
+        type: "object",
+        properties: {
+          status: {
+            type: "string",
             const: "unavailable",
           },
           reason: {
@@ -3961,6 +4029,6 @@ export const responseSchemas = {
   },
   VisibilityRole: {
     type: "string",
-    enum: ["signatory", "observer", "witness"],
+    enum: ["signatory", "observer", "controller", "witness"],
   },
 };

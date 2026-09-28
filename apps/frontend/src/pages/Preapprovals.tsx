@@ -2,7 +2,7 @@
 // read and expiry-judged them. A preapproval the receiver set up in advance means the sender can
 // transfer straight away, with no offer-accept round trip.
 import { Badge, MessageRow, Scroll, Section, Table } from "@canton-lens/design-system";
-import type { TransferPreapprovalRow } from "../api/types.ts";
+import type { PreapprovalsResponse, TransferPreapprovalRow } from "../api/types.ts";
 import { ContractLink, PartyChip } from "../format/chips.tsx";
 import { useSession } from "../session/SessionContext.tsx";
 
@@ -13,8 +13,16 @@ export const preapprovalLeft = (r: TransferPreapprovalRow) =>
     `${Math.round((r.expiry.remainingMs ?? 0) / 60000)}m left`
   );
 
+// **The drawing is split from the fetching.** Everything below `…View` is a function of one response and
+// nothing else: no context, no effect, no clock. That is what lets a test hand it the answer a real
+// participant gave and look at the rows that come out — with the two joined, a static render only ever
+// reaches the "reading…" branch and the screen itself is never looked at (2026-09-18).
 export function Preapprovals() {
-  const { preapprovals: p } = useSession();
+  const { preapprovals } = useSession();
+  return <PreapprovalsView p={preapprovals ?? null} />;
+}
+
+export function PreapprovalsView({ p }: { p: PreapprovalsResponse | null }) {
   if (!p) return <div id="view-preapprovals" />;
   const rows = p.kind === "available" ? (p.view.rows ?? []) : [];
   const problems = p.kind === "available" ? (p.view.problems ?? []) : [];

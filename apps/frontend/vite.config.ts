@@ -1,5 +1,6 @@
 import react from "@vitejs/plugin-react";
 import { defaultClientConditions, defineConfig, loadEnv } from "vite";
+import { socialMeta } from "./social-meta.ts";
 
 // This screen does not know which path it was delivered under — it could be the root, or under the console's
 // `/explorer/`. `base: "./"` makes asset addresses document-relative so both cases open as is
@@ -32,7 +33,7 @@ export default defineConfig(({ command, mode }) => {
 
   return {
     base: "./",
-    plugins: [react()],
+    plugins: [react(), socialMeta(env.VITE_PUBLIC_URL)],
     server: { port: 5173, strictPort: true, ...(proxy ? { proxy } : {}) },
     preview: { port: 5173, strictPort: true, ...(proxy ? { proxy } : {}) },
     // The workspace package (the design system) is read from src, not dist — the "source" condition in

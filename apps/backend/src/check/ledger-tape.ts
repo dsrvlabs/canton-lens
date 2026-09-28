@@ -138,9 +138,17 @@ export function replaySend(
     const entry = byKey.get(key);
     if (entry === undefined) {
       misses?.push(key);
+      // **Who fixes this, in the message.** A contributor seeing red here has usually done nothing wrong:
+      // changing what we ask the node is a normal change, and it makes the tape stale by design. What they
+      // cannot do is re-record — that needs a live participant, and updating the tape is a maintainer's job
+      // for the same reason it is elsewhere (a recorded file is hard to review, so it is a place to hide
+      // things). The check still fails rather than skipping: a question never put to a real node is exactly
+      // what must not be merged unseen.
       throw new Error(
         `This question is not on the tape — ${key}\n` +
-          `  our code is asking something different from when it was recorded. If the code is right, re-record against a live participant.`,
+          `  our code is asking something different from when it was recorded.\n` +
+          `  If the code is right this is not your mistake — a maintainer re-records the tape against a\n` +
+          `  live participant. Say in your pull request that the tape needs re-recording.`,
       );
     }
     if (entry.bytes !== undefined) {
@@ -177,20 +185,121 @@ export const parseTape = (text: string): TapeEntry[] =>
  */
 export function dedupeTape(entries: readonly TapeEntry[]): {
   entries: TapeEntry[];
-  conflicts: string[];
+  /** One per key that got two answers, with the first place they part — `key` alone leaves nowhere to look. */
+  conflicts: { key: string; where: string }[];
 } {
   const byKey = new Map<string, TapeEntry>();
-  const conflicts: string[] = [];
+  const conflicts = new Map<string, string>();
   for (const entry of entries) {
     const key = tapeKey(entry.who, entry.method, entry.path, entry.body);
     const seen = byKey.get(key);
     if (seen !== undefined) {
-      if (JSON.stringify(seen) !== JSON.stringify(entry)) conflicts.push(key);
+      if (!sameAnswer(seen, entry)) {
+        if (!conflicts.has(key)) conflicts.set(key, whereTheyPart(seen, entry));
+      }
       continue; // keep the first one seen — which is right is for a person to decide
     }
     byKey.set(key, entry);
   }
-  return { entries: [...byKey.values()], conflicts: [...new Set(conflicts)] };
+  return {
+    entries: [...byKey.values()],
+    conflicts: [...conflicts].map(([key, where]) => ({ key, where })),
+  };
+}
+
+/**
+ * Whether two answers to one question are the same answer.
+ *
+ * **One thing is excused, and only one**: when the node reports a failure it names *that request* inside the
+ * failure — `DAML_FAILURE(9,9da4ed2a)` in the message, and the same id encoded again in `details`. Two calls
+ * therefore never come back byte-identical once anything in the answer failed, and the seed holds a contract
+ * whose standard view cannot be computed on purpose (it is the only way the `problems` list is ever reached).
+ *
+ * So the failure's **code** is compared and its wording is not. What goes in the file is still the first real
+ * answer, unedited — nothing is rewritten to make it agree with itself. A failure that changed code, appeared,
+ * or went away is still a conflict, which is the drift this guard exists for.
+ */
+const withoutRequestIds = (value: unknown): unknown => {
+  if (Array.isArray(value)) return value.map(withoutRequestIds);
+  if (value === null || typeof value !== "object") return value;
+  const record = value as Record<string, unknown>;
+  // The gRPC status shape, and only it: a numeric code beside a message and its details.
+  if (typeof record.code === "number" && "message" in record && "details" in record) {
+    // **Only the two fields that name the request, and every other field is kept.** Replacing the whole
+    // object dropped any sibling a future Canton adds, and a dropped field is a difference that hides
+    // (2026-09-18 codex). The code stays compared, so a failure that changed category, appeared or went
+    // away is still a conflict.
+    const kept: Record<string, unknown> = {};
+    for (const [key, at] of Object.entries(record)) {
+      kept[key] =
+        key === "message" || key === "details"
+          ? "(the node's wording for this request)"
+          : withoutRequestIds(at);
+    }
+    return kept;
+  }
+  const out: Record<string, unknown> = {};
+  for (const [key, at] of Object.entries(record)) out[key] = withoutRequestIds(at);
+  return out;
+};
+
+const sameAnswer = (a: TapeEntry, b: TapeEntry): boolean =>
+  a.status === b.status &&
+  a.bytes === b.bytes &&
+  stableStringify(withoutRequestIds(a.response ?? null)) ===
+    stableStringify(withoutRequestIds(b.response ?? null));
+
+/**
+ * The first place two answers to one question differ, in a line.
+ *
+ * Worth the twenty lines: "the same question got two answers" is a stop sign with nothing behind it, and the
+ * difference is what says whether the ledger moved under the recording (a retry fixes it) or something is not
+ * deterministic (a retry never will).
+ */
+function whereTheyPart(a: TapeEntry, b: TapeEntry): string {
+  if (a.status !== b.status) return `status ${a.status} then ${b.status}`;
+  const walk = (left: unknown, right: unknown, at: string): string | null => {
+    if (stableStringify(left) === stableStringify(right)) return null;
+    if (Array.isArray(left) && Array.isArray(right)) {
+      if (left.length !== right.length) {
+        return `${at || "the answer"} held ${left.length} then ${right.length}`;
+      }
+      for (let i = 0; i < left.length; i += 1) {
+        const deeper = walk(left[i], right[i], `${at}[${i}]`);
+        if (deeper !== null) return deeper;
+      }
+    }
+    if (
+      left !== null &&
+      right !== null &&
+      typeof left === "object" &&
+      typeof right === "object" &&
+      !Array.isArray(left) &&
+      !Array.isArray(right)
+    ) {
+      const keys = new Set([
+        ...Object.keys(left as Record<string, unknown>),
+        ...Object.keys(right as Record<string, unknown>),
+      ]);
+      for (const key of [...keys].sort()) {
+        const deeper = walk(
+          (left as Record<string, unknown>)[key],
+          (right as Record<string, unknown>)[key],
+          at === "" ? key : `${at}.${key}`,
+        );
+        if (deeper !== null) return deeper;
+      }
+    }
+    const short = (v: unknown) => stableStringify(v).slice(0, 80);
+    return `${at || "the answer"} was ${short(left)} then ${short(right)}`;
+  };
+  // **Walked with the same excusal the comparison uses.** Told the raw answers, this pointed at the failure's
+  // wording — the one difference that is *not* why they conflict — and sent a reader looking in the wrong
+  // place (2026-09-18 codex).
+  return (
+    walk(withoutRequestIds(a.response ?? null), withoutRequestIds(b.response ?? null), "") ??
+    "nothing in the answer — the entry itself"
+  );
 }
 
 /**

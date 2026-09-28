@@ -4,7 +4,7 @@
 // **It is split into two layers.** The **shape** of response bodies is held by openapi-schemas.generated.ts, generated from the
 // TypeScript types of responses.ts (core types + the fields the router lays on), and referenced here via $ref — there is no place
 // for code and docs to diverge (`pnpm openapi:check`). Routes, parameters, status codes and **the explanation of “why this shape”**
-// are written here by hand — context such as “recent” being the (offset-500, offset] range does not come out of the types.
+// are written here by hand — context such as how “recent” is bounded does not come out of the types.
 // This is OpenAPI 3.1. 3.1 schemas are JSON Schema 2020-12, so a description can sit next to a $ref.
 import { responseSchemas } from "./openapi-schemas.generated.ts";
 
@@ -97,10 +97,27 @@ const ledgerFailureResponses = {
     ["forbidden"],
   ),
   "502": failure(
-    "node_error — the participant answered with an error, or the response shape differs from what this layer knows.",
-    ["node_error"],
+    "node_error — the participant answered with an error, or the response shape differs from what this layer knows. " +
+      "too_many_elements — the list is larger than this path will serve: the participant's JSON API refuses to " +
+      "return more than `http-list-max-elements-limit` elements in one response. No parameter of the request " +
+      "changes this; the remedy is that limit on the node.",
+    ["node_error", "too_many_elements"],
   ),
   "504": failure("unreachable — the participant could not be reached.", ["unreachable"]),
+};
+
+// Routes that query the ledger with the viewer's party filter. A ledger user with neither CanReadAs nor
+// CanActAs has no filter to send, so these routes answer before the participant is asked. One status code
+// carries one response object, so the shared 403 is restated here with both reasons rather than added
+// beside it. /api/session and /api/home are not in this set: they report the zero-party viewer inside a 200.
+const partyScopedFailureResponses = {
+  ...ledgerFailureResponses,
+  "403": failure(
+    "forbidden — the participant answered that the token has no right to make this query. " +
+      "no_party_rights — the viewer's ledger user holds no CanReadAs or CanActAs right, so this route " +
+      "has no party filter to query with and the participant is not asked.",
+    ["forbidden", "no_party_rights"],
+  ),
 };
 
 const offsetParameter = {
@@ -214,7 +231,7 @@ export const openApiDocument = {
             ["invalid_offset", "offset_after_ledger_end", "invalid_page_size", "invalid_cursor"],
           ),
           "401": unauthenticatedResponse,
-          ...ledgerFailureResponses,
+          ...partyScopedFailureResponses,
         },
       },
     },
@@ -270,8 +287,9 @@ export const openApiDocument = {
           "200": ok(
             "UpdatesResponse",
             "The rows of buildRecentUpdates(core) (a list of created/archived events per update), filtered, paged, plus " +
-              "offset, beginExclusive. “Recent” is the (offset - 500, offset] range — not the full history " +
-              "— older history is not served. beginExclusive says “how far back did we look for recent”. An empty ledger (offset 0) " +
+              "offset, beginExclusive. " +
+              "“Recent” is a window that starts 500 offsets back and widens in steps (×4, up to 128,000 offsets) until it holds 500 of the viewer's transactions, reaches the ledger's start, or reaches that bound — not the full history; older history is not served. A pruned past ends the widening, not the read. " +
+              "beginExclusive says “how far back did we look for recent”. An empty ledger (offset 0) " +
               "answers with an empty page without calling the ledger.",
           ),
           "400": failure(
@@ -279,7 +297,7 @@ export const openApiDocument = {
             ["invalid_offset", "offset_after_ledger_end", "invalid_before", "invalid_limit"],
           ),
           "401": unauthenticatedResponse,
-          ...ledgerFailureResponses,
+          ...partyScopedFailureResponses,
         },
       },
     },
@@ -311,14 +329,14 @@ export const openApiDocument = {
             required: false,
             schema: { type: "integer", minimum: 0 },
             description:
-              "The first offset drawn. The window is [from, offset] — both ends included, so from == offset draws that one point rather than an empty range. Absent means the latest 100 offsets - narrower than the 500 the lists call recent, because a timeline lays a whole span out at once instead of paging it. It may not exceed offset, and the span may not exceed 5000: a wider one is refused rather than quietly narrowed, because a drawn window that differs from the requested one misreads as fact.",
+              "The first offset drawn. The window is [from, offset] — both ends included, so from == offset draws that one point rather than an empty range. Absent means the window the lists call recent: it starts 500 offsets back and widens (×4, up to 128,000) until it holds 500 of the viewer's transactions or reaches the ledger's start, and the response says where it landed. It may not exceed offset, and the span may not exceed 128,000: a wider one is refused rather than quietly narrowed, because a drawn window that differs from the requested one misreads as fact.",
           },
           offsetParameter,
         ],
         responses: {
           "200": ok(
             "TimelineResponse",
-            "buildLifelines(core) over two reads taken at the one offset: the (offset-500, offset] update window and the " +
+            "buildLifelines(core) over two reads taken at the one offset: the [from, offset] update window and the " +
               "active contracts. A lifetime carries where it started and ended as ledger offsets plus a state — archived (an " +
               "archive was seen in the window), alive (no archive, and it is in the active contracts) or unknown (no archive " +
               "seen and not active). unknown is not alive: an archived event carries no signatories or observers, so a " +
@@ -329,11 +347,11 @@ export const openApiDocument = {
           ),
           "400": failure(
             "invalid_offset (from or offset is not a non-negative integer string) · offset_after_ledger_end · " +
-              "invalid_window (from is after offset) · window_too_wide (the span exceeds 5000 offsets).",
+              "invalid_window (from is after offset) · window_too_wide (the span exceeds 128,000 offsets).",
             ["invalid_offset", "offset_after_ledger_end", "invalid_window", "window_too_wide"],
           ),
           "401": unauthenticatedResponse,
-          ...ledgerFailureResponses,
+          ...partyScopedFailureResponses,
         },
       },
     },
@@ -389,8 +407,8 @@ export const openApiDocument = {
               "rights cannot be obtained, the request fails with a status code (the home does not render without them); if a later source fails, only " +
               "that card becomes {status:unavailable, reason}. cards: with no parties, a single {status:no_party_rights}; otherwise activeContracts, " +
               "pendingOffers (my turn, unexpired, up to 5 previewed in order of nearest expiry) and tokens (based on the standard Holding interface; tokens " +
-              "from apps that do not implement the standard are not included). recent covers the (offset-500, offset] range, not the full history " +
-              "and older history is not served.",
+              "from apps that do not implement the standard are not included). recent: " +
+              "“Recent” is a window that starts 500 offsets back and widens in steps (×4, up to 128,000 offsets) until it holds 500 of the viewer's transactions, reaches the ledger's start, or reaches that bound — not the full history; older history is not served. A pruned past ends the widening, not the read.",
           ),
           "400": failure(
             "invalid_as_of (absent, or not an instant) · invalid_offset · offset_after_ledger_end · " +
@@ -427,8 +445,10 @@ export const openApiDocument = {
             "UpdateDetailResponse",
             "The view of buildUpdateDetail(core). If kind is transaction, each event carries the " +
               "choice, template definitions read from the package schema (choiceSchema, templateSchema) and schemaStatus — if the schema " +
-              "cannot be read, only that event is null and Raw stays as is. If kind is not transaction (reassignment etc.), header only — " +
-              "the screen says “not in this version”.",
+              "cannot be read, only that event is null and Raw stays as is. Events keep the node order the participant sent and each " +
+              "carries its place in the transaction tree (tree.depth · tree.ancestorIndex · tree.descendantCount, derived from nodeId and " +
+              "lastDescendantNodeId); a client that ignores tree reads the same flat list. If kind is not transaction (reassignment etc.), " +
+              "header only — the screen says “not in this version”.",
           ),
           "400": failure(
             "invalid_path — if the updateId path segment does not decode (non-hex after a percent) it is 400.",
@@ -439,7 +459,7 @@ export const openApiDocument = {
           ]),
           "410": failure("pruned — history the participant has already pruned.", ["pruned"]),
           "401": unauthenticatedResponse,
-          ...ledgerFailureResponses,
+          ...partyScopedFailureResponses,
         },
       },
     },
@@ -468,7 +488,7 @@ export const openApiDocument = {
           "404": failure("not_found", ["not_found"]),
           "410": failure("pruned", ["pruned"]),
           "401": unauthenticatedResponse,
-          ...ledgerFailureResponses,
+          ...partyScopedFailureResponses,
         },
       },
     },
@@ -538,7 +558,7 @@ export const openApiDocument = {
             ["not_found"],
           ),
           "401": unauthenticatedResponse,
-          ...ledgerFailureResponses,
+          ...partyScopedFailureResponses,
         },
       },
     },
@@ -571,7 +591,7 @@ export const openApiDocument = {
             "offset_after_ledger_end",
           ]),
           "401": unauthenticatedResponse,
-          ...ledgerFailureResponses,
+          ...partyScopedFailureResponses,
         },
       },
     },
@@ -606,7 +626,7 @@ export const openApiDocument = {
             ["not_found"],
           ),
           "401": unauthenticatedResponse,
-          ...ledgerFailureResponses,
+          ...partyScopedFailureResponses,
         },
       },
     },
@@ -654,7 +674,7 @@ export const openApiDocument = {
             ["not_found"],
           ),
           "401": unauthenticatedResponse,
-          ...ledgerFailureResponses,
+          ...partyScopedFailureResponses,
         },
       },
     },
@@ -674,7 +694,7 @@ export const openApiDocument = {
             "offset_after_ledger_end",
           ]),
           "401": unauthenticatedResponse,
-          ...ledgerFailureResponses,
+          ...partyScopedFailureResponses,
         },
       },
     },
@@ -696,7 +716,7 @@ export const openApiDocument = {
             "offset_after_ledger_end",
           ]),
           "401": unauthenticatedResponse,
-          ...ledgerFailureResponses,
+          ...partyScopedFailureResponses,
         },
       },
     },
@@ -772,7 +792,7 @@ export const openApiDocument = {
             "offset_after_ledger_end",
           ]),
           "401": unauthenticatedResponse,
-          ...ledgerFailureResponses,
+          ...partyScopedFailureResponses,
         },
       },
     },
@@ -801,7 +821,7 @@ export const openApiDocument = {
             ["invalid_path", "invalid_offset", "offset_after_ledger_end"],
           ),
           "401": unauthenticatedResponse,
-          ...ledgerFailureResponses,
+          ...partyScopedFailureResponses,
         },
       },
     },

@@ -14,14 +14,22 @@ import {
   Section,
   Table,
 } from "@canton-lens/design-system";
-import type { TokenHoldingGroup } from "../api/types.ts";
+import type { HoldingsResponse, TokenHoldingGroup } from "../api/types.ts";
 import { PartyChip, RowLink } from "../format/chips.tsx";
 import { trimZeros } from "../format/format.ts";
 import { href } from "../route/hash.ts";
 import { useSession } from "../session/SessionContext.tsx";
 
+// **The drawing is split from the fetching.** Everything below `…View` is a function of one response and
+// nothing else: no context, no effect, no clock. That is what lets a test hand it the answer a real
+// participant gave and look at the rows that come out — with the two joined, a static render only ever
+// reaches the "reading…" branch and the screen itself is never looked at (2026-09-18).
 export function Holdings() {
-  const { holdings: h } = useSession();
+  const { holdings } = useSession();
+  return <HoldingsView h={holdings ?? null} />;
+}
+
+export function HoldingsView({ h }: { h: HoldingsResponse | null }) {
   if (!h) return <div id="view-holdings" />;
   const groups = h.kind === "available" ? (h.view.groups ?? []) : [];
   const problems = h.kind === "available" ? (h.view.problems ?? []) : [];

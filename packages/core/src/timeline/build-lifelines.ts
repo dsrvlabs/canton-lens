@@ -90,7 +90,14 @@ export function buildLifelines(
       // the **earliest** is the one kept rather than the last one seen.
       const before = into.get(event.contractId);
       if (before === undefined || seen.offset < before.offset) into.set(event.contractId, seen);
-      if (!template.has(event.contractId)) {
+      // **A creation is the better of the two events, and it is usually not the one seen first.** The rows
+      // arrive newest first, so for a contract created and archived inside the same window the archive is
+      // read first — and an archive carries no signatories or observers (only witnessParties, and a witness
+      // is not a stakeholder). Keeping the first event seen therefore left every contract that *ended*
+      // inside the window with no stakeholders at all, while its creation sat in the same window carrying
+      // them. So a creation overwrites what an archive put here; two creations do not overwrite each other.
+      const already = template.get(event.contractId);
+      if (already === undefined || (event.kind === "created" && already.parties.length === 0)) {
         template.set(event.contractId, {
           package: event.package,
           packageName: null,

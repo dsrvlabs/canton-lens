@@ -400,6 +400,22 @@
   font-size: var(--clds-text-fine);
 }
 
+/* **A disclosure that opens sideways.** The default one stacks its content under the summary, which is
+   right when the content is a block. Inside a line of running text it is not: opening it pushed
+   everything after it onto another line and moved the row's baseline, so the row grew taller and the
+   text beside it reflowed — the whole line jumped for one chip.
+
+   Here summary and content sit on one line and share its baseline, so opening extends the line to the
+   right and the row keeps its height. The content gets no top margin for the same reason. */
+.clds-disclosure-inline {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--clds-space-2);
+}
+.clds-disclosure-inline > :not(summary) {
+  margin-top: 0;
+}
+
 /* Action row — where what was chosen is applied. One line is drawn above, and the last link is pushed to
    the right end. */
 .clds-actions {

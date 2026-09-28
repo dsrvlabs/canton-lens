@@ -13,13 +13,44 @@
 import type { ValidateFunction } from "ajv";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import { openApiDocument } from "../openapi.ts";
+import { routeOperations } from "../routes.ts";
+import { questionProblems } from "./asked-well.ts";
+import { type Sighting, unmet } from "./conditions.ts";
 import { type Harvest, harvest, ROUND_ONE, ROUND_TWO } from "./expectations.ts";
+import type { Given } from "./given.ts";
+import { checkPages, differences } from "./mapping.ts";
+import { MAPPINGS } from "./mappings/index.ts";
+import { compareIdSets, type OwnSet, validateOwnSet } from "./own-set.ts";
+import { answerDifference, type Kind, PROBES, type ProbeMaterial, whyNoProbe } from "./probes.ts";
+import type { NodeCall } from "./trace.ts";
 
 // The channel for asking one address as one person. Whoever built `ask` already holds the token — this keeps
 // credentials out of this file, so there is no place for them to end up in a log or a report.
-export type Ask = (url: string) => Promise<{ status: number; body: unknown }>;
+// `ledger` is what the node was asked for this one address, in order. **The answer alone is not enough to
+// judge most of the nine sentences**: "we said fifteen" can only be compared with what the node handed us, and
+// that number is nowhere in the response. Whoever builds `ask` collects it (check/trace.ts).
+export type Ask = (
+  url: string,
+) => Promise<{ status: number; body: unknown; ledger: readonly NodeCall[] }>;
 
-export type CheckUser = { name: string; ask: Ask };
+// **Who is asking, and what they were given.** The second half is what lets an answer be judged as right *for
+// this person*: a viewer holding no party is answered 403 everywhere that needs one, and that is the correct
+// answer, not a failure. See check/given.ts for why it is declared rather than worked out.
+export type CheckUser = {
+  name: string;
+  ask: Ask;
+  given: Given;
+  /**
+   * The payload of this person's ledger token, already decoded by whoever holds the token — never the token
+   * itself. `null` when it is not a JWT. See `CheckContext.callerToken`.
+   */
+  tokenPayload: Record<string, unknown> | null;
+  /**
+   * What this person can be probed with for axis ⑤ — a contract they cannot see, one that was archived, a
+   * party they share nothing with. Worked out by asking the node directly, never from our own answers.
+   */
+  probes: ProbeMaterial;
+};
 
 // **This check does not read a clock either.** The API requires the "now" for judging expiry as a query
 // parameter (router.ts: "The 'now' for judging expiry is measured by the caller and passed in"). The real-node
@@ -32,23 +63,52 @@ export const nowFrom = (at: Date): Now => ({ iso: at.toISOString(), ms: at.getTi
 export type EndpointSpec = {
   /** The openapi path template — the 200 schema is found by it. */
   template: string;
-  /** The address actually asked. Round two returns null when round one yielded nothing, and that is a failure. */
+  /** The address actually asked. Round two returns null when round one yielded nothing. */
   url: (harvested: Harvest, now: Now) => string | null;
   /** The name for the report. Distinguishes asking the same template twice (with pageSize, say). */
   name?: string;
   /** Returning null passes; returning a sentence makes that sentence the failure reason. */
-  filled: (body: unknown) => string | null;
+  filled: (body: unknown, given: Given) => string | null;
   /** What was missing, for when round two could not harvest its value. */
   need?: string;
+  /**
+   * What this address must answer **this** person. Absent means 200. A viewer with no reading scope is
+   * answered 403 no_party_rights on every party-scoped address, and that is the right answer — while for
+   * anyone else the same 403 is a defect. It is judged both ways: the stated status is required, not merely
+   * tolerated.
+   */
+  status?: (given: Given) => { status: number; reason?: string };
+  /**
+   * Why this address cannot be put to this person at all — null when it can. A round-two address is built
+   * from a value harvested in round one, and when that value legitimately does not exist (nobody has no
+   * contracts to name, a super reader has no party of their own) there is nothing to ask.
+   *
+   * **Both directions are judged.** A reason given while an address could still be built is as much a defect
+   * as an address that could not be built without one: the first hides a question we stopped asking, the
+   * second hides one we never could.
+   */
+  unaskable?: (given: Given) => string | null;
 };
 
-export type Level = "responds" | "schema" | "filled";
+export type Level =
+  | "responds"
+  | "schema"
+  | "filled"
+  | "mapping"
+  | "sameness"
+  | "material"
+  | "answer-key";
 export type Finding = { user: string; url: string; level: Level; message: string };
+
+/** An address that was rightly not put to someone, and why. Counted and printed, never silent. */
+export type NotAsked = { user: string; url: string; why: string };
 
 export type CheckReport = {
   users: string[];
   asked: number;
   findings: Finding[];
+  /** The zeros that were legitimate. A zero with no reason is a finding instead. */
+  notAsked: NotAsked[];
   ok: boolean;
 };
 
@@ -102,6 +162,10 @@ function schemaValidators(): Map<string, ValidateFunction> {
 // ajv's error list is long. Only the first few go into the report — one is enough to see where the drift is,
 // and carrying all of them makes a report nobody reads.
 const ERRORS_SHOWN = 4;
+
+const rec = (value: unknown): Record<string, unknown> =>
+  value !== null && typeof value === "object" ? (value as Record<string, unknown>) : {};
+const arrOf = (value: unknown): unknown[] => (Array.isArray(value) ? value : []);
 const sayErrors = (validate: ValidateFunction): string => {
   const all = validate.errors ?? [];
   const shown = all
@@ -118,8 +182,16 @@ export function describeCoverage(): {
   /** Every operation openapi declares, as `"GET /api/session"`. */
   openApiOperations: string[];
   checkedOperations: string[];
+  /** Every operation the router answers, as `"GET /api/session"`. */
+  routerOperations: string[];
   missingFromCheck: string[];
   withoutValidator: string[];
+  /** Declared in openapi, not recognised by the router — the document promises an address that 404s. */
+  missingFromRouter: string[];
+  /** Answered by the router, absent from openapi — an address nobody agreed to and nothing describes. */
+  undocumented: string[];
+  /** In the check table, absent from openapi — the table asks for something nothing describes. */
+  askedButUndocumented: string[];
 } {
   const validators = schemaValidators();
   const all = operations();
@@ -128,26 +200,60 @@ export function describeCoverage(): {
     [...ROUND_ONE, ...ROUND_TWO].map((spec) => operationName("GET", spec.template)),
   );
   const names = all.map((o) => operationName(o.method, o.path));
+  // **Compared as operations, not as paths.** A method is half of what an address is: without it, a POST
+  // added to the document could never be reported as missing from the router, because the router's side of
+  // the comparison could not say what it answers.
+  const documented = new Set(names);
+  const answered = new Set(routeOperations());
   return {
     openApiOperations: names,
     checkedOperations: [...covered],
+    routerOperations: [...answered],
     missingFromCheck: names.filter((n) => !covered.has(n)),
     withoutValidator: names.filter((n) => !validators.has(n)),
+    missingFromRouter: [...documented].filter((n) => !answered.has(n)),
+    undocumented: [...answered].filter((n) => !documented.has(n)),
+    // The fourth direction. An entry in the table naming something openapi does not declare would otherwise
+    // only show up as a failure when asked — and on a person who is not asked it, not at all.
+    askedButUndocumented: [...covered].filter((n) => !documented.has(n)),
   };
 }
 
 // ── Running ──────────────────────────────────────────────────────────────────────
 
-export async function runCheck(users: readonly CheckUser[], now: Now): Promise<CheckReport> {
+/**
+ * **The second recording, asked of the node without going through us** (check/own-set.ts).
+ *
+ * Every level above it reads the node's answer to *our* question. When the application asks for too little,
+ * the tape holds too little, replay serves too little, and every one of them agrees. This is the only input
+ * to the check that was not produced by asking the way the product asks — which is exactly why it can say
+ * "the node says this person can see a contract that is not in our answer".
+ */
+export type AnswerKey = { own: OwnSet; tapeOffset: number };
+
+export async function runCheck(
+  users: readonly CheckUser[],
+  now: Now,
+  answerKey?: AnswerKey,
+): Promise<CheckReport> {
   const validators = schemaValidators();
   const findings: Finding[] = [];
+  const notAsked: NotAsked[] = [];
+  const sightings: Sighting[] = [];
   let asked = 0;
 
-  // **The coverage guard — it stops a new operation from arriving unchecked.** Without it, an operation could
-  // be added to openapi and the check would still be green, and "all 16 addresses are looked at" would quietly
-  // become false. The table does not adjust itself to openapi; it is the other way round — the contract is the
-  // source of truth.
-  for (const name of describeCoverage().missingFromCheck) {
+  // **The three sets of addresses have to be one set.** The router answers some addresses, openapi declares
+  // some, and the check table asks about some; "every address is looked at" is only true when those name the
+  // same things. Each direction is a different failure and each is reported as itself:
+  //
+  //   openapi \ check     — an operation was added to the contract and nothing ever asks for it
+  //   openapi \ router    — the document promises an address that answers 404
+  //   router \ openapi    — the application answers at an address nothing describes and nothing checks
+  //   check \ openapi     — the table asks for something nothing describes
+  //
+  // The contract stays the source of truth: neither the table nor the router adjusts itself to the others.
+  const coverage = describeCoverage();
+  for (const name of coverage.missingFromCheck) {
     findings.push({
       user: "(all)",
       url: name,
@@ -156,6 +262,39 @@ export async function runCheck(users: readonly CheckUser[], now: Now): Promise<C
         "declared in openapi but absent from the check table (expectations.ts) — never asked",
     });
   }
+  for (const path of coverage.missingFromRouter) {
+    findings.push({
+      user: "(all)",
+      url: path,
+      level: "filled",
+      message: "declared in openapi but not an address the router answers (routes.ts) — it 404s",
+    });
+  }
+  for (const path of coverage.undocumented) {
+    findings.push({
+      user: "(all)",
+      url: path,
+      level: "filled",
+      message:
+        "answered by the router (routes.ts) but absent from openapi — undocumented, unchecked",
+    });
+  }
+  for (const name of coverage.askedButUndocumented) {
+    findings.push({
+      user: "(all)",
+      url: name,
+      level: "filled",
+      message:
+        "in the check table (expectations.ts) but absent from openapi — nothing describes it",
+    });
+  }
+
+  // **What an address that belongs to nobody answered, and to whom.** Compared after everyone has been
+  // asked: within one person nothing collapses on that path, so the claim only exists across people.
+  const sharedAnswers = new Map<
+    string,
+    { user: string; answer: { status: number; body: unknown } }[]
+  >();
 
   for (const user of users) {
     const bodies = new Map<string, unknown>();
@@ -165,8 +304,15 @@ export async function runCheck(users: readonly CheckUser[], now: Now): Promise<C
       for (const spec of specs) {
         const url = spec.url(harvested, now);
         const label = spec.name ?? spec.template;
+        const unaskable = spec.unaskable?.(user.given) ?? null;
         if (url === null) {
-          // No address could be built — which means round one was empty. Skipping would make green a lie.
+          if (unaskable !== null) {
+            // A zero with a stated reason. It is written down rather than skipped: an address nobody asks is
+            // an address nobody checks, and the only thing keeping that honest is that it is visible.
+            notAsked.push({ user: user.name, url: label, why: unaskable });
+            continue;
+          }
+          // No address could be built and nothing says one could not be. Skipping would make green a lie.
           findings.push({
             user: user.name,
             url: label,
@@ -175,11 +321,23 @@ export async function runCheck(users: readonly CheckUser[], now: Now): Promise<C
           });
           continue;
         }
+        if (unaskable !== null) {
+          // The other direction. Something said this person could not be asked and an address was built all
+          // the same — so either the reason is wrong or the value it said was missing is not.
+          findings.push({
+            user: user.name,
+            url,
+            level: "filled",
+            message: `said to be unaskable (${unaskable}) and yet an address was built`,
+          });
+          continue;
+        }
         asked += 1;
         let status: number;
         let body: unknown;
+        let ledger: readonly NodeCall[];
         try {
-          ({ status, body } = await user.ask(url));
+          ({ status, body, ledger } = await user.ask(url));
         } catch (error) {
           findings.push({
             user: user.name,
@@ -190,17 +348,23 @@ export async function runCheck(users: readonly CheckUser[], now: Now): Promise<C
           continue;
         }
 
-        // ① It answers. Asked with a token, so it must be 200 — anything else records the circumstance.
-        if (status !== 200) {
-          const reason = (body as { reason?: unknown } | null)?.reason;
+        // ① It answers what it should answer this person. Usually 200; where the person holds no reading
+        // scope the right answer is a refusal, and the refusal is **required**, not merely tolerated — a 200
+        // where a 403 belongs is the more serious defect of the two.
+        const want = spec.status?.(user.given) ?? { status: 200 };
+        const reason = (body as { reason?: unknown } | null)?.reason;
+        const said = `${status}${typeof reason === "string" ? ` ${reason}` : ""}`;
+        if (status !== want.status || (want.reason !== undefined && reason !== want.reason)) {
           findings.push({
             user: user.name,
             url,
             level: "responds",
-            message: `${status}${typeof reason === "string" ? ` ${reason}` : ""}`,
+            message: `expected ${want.status}${want.reason === undefined ? "" : ` ${want.reason}`}, got ${said}`,
           });
           continue;
         }
+        // A refusal that was the right answer is judged and done — there is no 200 schema to compare it with.
+        if (want.status !== 200) continue;
         bodies.set(url, body);
 
         // ② It matches the contract.
@@ -216,10 +380,51 @@ export async function runCheck(users: readonly CheckUser[], now: Now): Promise<C
           findings.push({ user: user.name, url, level: "schema", message: sayErrors(validate) });
         }
 
+        // Kept for ⑥. Every 200 goes in, whatever it holds — a condition asks whether the material ever
+        // arrived anywhere, so it is answered across all of them and not one address at a time.
+        sightings.push({ user: user.name, given: user.given, label, url, body, trace: ledger });
+
         // ③ It has content. Checked even when ② failed — with both at once, looking at one misdiagnoses.
-        const empty = spec.filled(body);
+        const empty = spec.filled(body, user.given);
         if (empty !== null) {
           findings.push({ user: user.name, url, level: "filled", message: empty });
+        }
+
+        // ④-a **The question was the right one.** Before judging what we did with the node's answer, judge
+        // what we asked for: a request that names fewer parties than this person holds, or reads at some
+        // other moment, or looks up some other update, produces a smaller or wrong answer that every
+        // level below would then agree with perfectly. This runs for every address, mapped or not.
+        for (const problem of questionProblems(url, ledger, user.given)) {
+          findings.push({ user: user.name, url, level: "mapping", message: problem });
+        }
+
+        // ④ Every value in it came from somewhere. The rules for this address (check/mappings/) build the
+        // answer again from what the node said, and the two are compared slot by slot. An address with no
+        // rules is left at the first three levels rather than compared against nothing.
+        const mapping = MAPPINGS[label];
+        if (mapping !== undefined) {
+          const expectation = mapping.expected({
+            user: user.name,
+            url,
+            trace: ledger,
+            now,
+            callerToken: user.tokenPayload,
+          });
+          if (!expectation.ok) {
+            findings.push({
+              user: user.name,
+              url,
+              level: "mapping",
+              message: `the expected answer could not be built — ${expectation.why}`,
+            });
+          } else {
+            for (const problem of checkPages(expectation.body, expectation.pages ?? [])) {
+              findings.push({ user: user.name, url, level: "mapping", message: problem });
+            }
+            for (const difference of differences(expectation.body, body)) {
+              findings.push({ user: user.name, url, level: "mapping", message: difference });
+            }
+          }
         }
       }
     };
@@ -230,15 +435,181 @@ export async function runCheck(users: readonly CheckUser[], now: Now): Promise<C
       offset: null,
       packageId: null,
       partyId: null,
+      nextPage: null,
     };
     await round(ROUND_ONE, NOTHING);
-    await round(ROUND_TWO, harvest(bodies));
+    const harvested = harvest(bodies);
+    await round(ROUND_TWO, harvested);
+
+    // ⑤ **Naming something that is not mine must look like naming something that is not there.**
+    // Judged between answers rather than against a rule, so it needs its own pass — nothing that looks at
+    // one answer at a time can see a difference between two.
+    for (const probe of PROBES) {
+      const answers = new Map<Kind, { status: number; body: unknown }>();
+      for (const kind of probe.kinds) {
+        const url = probe.url(kind, harvested, user.probes);
+        const label = `${probe.template} (${kind})`;
+        if (url === null) {
+          notAsked.push({
+            user: user.name,
+            url: label,
+            why: whyNoProbe(kind, user.given),
+          });
+          continue;
+        }
+        asked += 1;
+        const answer = await user.ask(url);
+        answers.set(kind, { status: answer.status, body: answer.body });
+        if (probe.sameForEveryone === true) {
+          const at = sharedAnswers.get(url) ?? [];
+          at.push({ user: user.name, answer: { status: answer.status, body: answer.body } });
+          sharedAnswers.set(url, at);
+        }
+        const want = probe.says(kind, user.given);
+        const said = (answer.body as { reason?: unknown; status?: unknown } | null) ?? {};
+        if (answer.status !== want.status) {
+          findings.push({
+            user: user.name,
+            url: label,
+            level: "sameness",
+            message: `expected ${want.status}, got ${answer.status}`,
+          });
+        }
+        if (want.reason !== undefined && said.reason !== want.reason) {
+          findings.push({
+            user: user.name,
+            url: label,
+            level: "sameness",
+            message: `expected the reason ${want.reason}, got ${String(said.reason)}`,
+          });
+        }
+        if (want.bodySays !== undefined && said.status !== want.bodySays) {
+          findings.push({
+            user: user.name,
+            url: label,
+            level: "sameness",
+            message: `expected the answer to say ${want.bodySays}, it said ${String(said.status)}`,
+          });
+        }
+      }
+      // The pairs that must not be told apart. A kind this person could not be asked drops out of the
+      // comparison rather than making one up.
+      const present = probe.identical.filter((kind) => answers.has(kind));
+      const first = present[0];
+      if (first === undefined) continue;
+      for (const kind of present.slice(1)) {
+        const difference = answerDifference(
+          answers.get(first) as { status: number; body: unknown },
+          answers.get(kind) as { status: number; body: unknown },
+          probe.ignoring ?? [],
+        );
+        if (difference !== null) {
+          findings.push({
+            user: user.name,
+            url: `${probe.template} (${first} against ${kind})`,
+            level: "sameness",
+            message: `these must not be told apart — ${difference}`,
+          });
+        }
+      }
+    }
+  }
+
+  // The cross-person claim. Grouped by the address itself, because two people who asked about two different
+  // packages are not making one claim — only the same address twice is.
+  for (const [url, asked2] of sharedAnswers) {
+    const first = asked2[0];
+    if (first === undefined) continue;
+    for (const other of asked2.slice(1)) {
+      const difference = answerDifference(first.answer, other.answer, []);
+      if (difference !== null) {
+        findings.push({
+          user: `${first.user} and ${other.user}`,
+          url,
+          level: "sameness",
+          message: `this belongs to nobody and must read the same to everyone — ${difference}`,
+        });
+      }
+    }
+  }
+
+  // ⑦ **Set beside what the node said, asked without going through us.**
+  //
+  // The direction that matters is `missing`: the node says this person can see it and our answer does not.
+  // Nothing else in this check can see that — a narrowed question produces a smaller tape, a smaller answer
+  // and a smaller expectation, all agreeing. `extra` is the other direction and is worse: something in our
+  // answer the node never said they could see.
+  if (answerKey !== undefined) {
+    for (const problem of validateOwnSet(answerKey.own, answerKey.tapeOffset)) {
+      // **A bad answer key is a finding, not a skip.** Used anyway it turns a silent hole into a green light.
+      findings.push({
+        user: "(all)",
+        url: "the answer key",
+        level: "answer-key",
+        message: problem,
+      });
+    }
+    for (const sighting of sightings) {
+      const wanted =
+        sighting.label === "/api/contracts (every one)"
+          ? "contractIds"
+          : sighting.label === "/api/updates (every one)"
+            ? "updateIds"
+            : null;
+      if (wanted === null) continue;
+      const entry = answerKey.own.entries.find((one) => one.who === sighting.user);
+      if (entry === undefined) {
+        findings.push({
+          user: sighting.user,
+          url: sighting.label,
+          level: "answer-key",
+          message: "the answer key holds nobody by this name",
+        });
+        continue;
+      }
+      const key = wanted === "contractIds" ? entry.contractIds : entry.updateIds;
+      const idOf = wanted === "contractIds" ? "contractId" : "updateId";
+      const shown = arrOf(rec(sighting.body).rows).map((row) => rec(row)[idOf]);
+      const difference = compareIdSets(
+        key,
+        shown.filter((id): id is string => typeof id === "string"),
+      );
+      for (const id of difference.missing.slice(0, ERRORS_SHOWN)) {
+        findings.push({
+          user: sighting.user,
+          url: sighting.label,
+          level: "answer-key",
+          message: `the node says this person can see ${id} and our answer does not (${difference.missing.length} in total)`,
+        });
+      }
+      for (const id of difference.extra.slice(0, ERRORS_SHOWN)) {
+        findings.push({
+          user: sighting.user,
+          url: sighting.label,
+          level: "answer-key",
+          message: `our answer holds ${id} and the node never said this person could see it (${difference.extra.length} in total)`,
+        });
+      }
+    }
+  }
+
+  // ⑥ **The material the rules stand on is still there.** Nothing above can see this: a rule about decaying
+  // tokens is agreed with perfectly by a ledger that issues none, and so is a rule that was deleted. What is
+  // judged here is the recording, not the product — which is why the sentence says so.
+  for (const condition of unmet(sightings)) {
+    findings.push({
+      user: "(all)",
+      url: condition.name,
+      level: "material",
+      message: `nothing answered here holds it, so the rule it keeps is exercised by nothing — ${condition.keeps}`,
+    });
   }
 
   return {
     users: users.map((u) => u.name),
     asked,
     findings,
+    notAsked,
     ok: findings.length === 0,
   };
 }
@@ -252,12 +623,23 @@ export function formatReport(report: CheckReport): string {
       `${report.findings.length} discrepancies` +
       (report.findings.length === 0
         ? ""
-        : ` (answers ${perLevel("responds")} · contract ${perLevel("schema")} · content ${perLevel("filled")})`),
+        : ` (answers ${perLevel("responds")} · contract ${perLevel("schema")} · content ${perLevel("filled")}` +
+          ` · rules ${perLevel("mapping")} · sameness ${perLevel("sameness")} · material ${perLevel("material")}` +
+          ` · answer key ${perLevel("answer-key")})`),
   );
   for (const f of report.findings) {
-    const mark = { responds: "①", schema: "②", filled: "③" }[f.level];
+    const mark = {
+      responds: "①",
+      schema: "②",
+      filled: "③",
+      mapping: "④",
+      sameness: "⑤",
+      material: "⑥",
+      "answer-key": "⑦",
+    }[f.level];
     lines.push(`  ${mark} ${f.user} ${f.url} — ${f.message}`);
   }
-  lines.push(report.ok ? "Passed — all three levels." : "Failed.");
+  for (const n of report.notAsked) lines.push(`  · ${n.user} ${n.url} — not asked: ${n.why}`);
+  lines.push(report.ok ? "Passed — every level." : "Failed.");
   return lines.join("\n");
 }

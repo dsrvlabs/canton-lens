@@ -61,6 +61,11 @@ test("a contract created and archived inside the window has both ends known", ()
   );
   assert.equal(c1.state, "archived");
   assert.equal(c1.archivedBy, "u140");
+  // **Its stakeholders survive the archive.** The rows arrive newest first, so the archive is read before
+  // the creation — and an archive carries no signatories or observers. Keeping whichever event was seen
+  // first left every contract that ended inside the window with no parties at all, while its creation sat
+  // in the same window carrying them.
+  assert.deepEqual(c1.parties, ["alice::1", "bob::2"]);
 });
 
 test("a contract created inside the window and still active runs to the window's end", () => {

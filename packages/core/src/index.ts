@@ -133,6 +133,16 @@ export { buildGetVersionRequest, callGetVersion } from "./ledger-request/request
 export { buildGetLedgerEndRequest, callGetLedgerEnd } from "./ledger-request/request-ledger-end.ts";
 export { buildGetPackageRequest, callGetPackage } from "./ledger-request/request-package.ts";
 export { buildListPackagesRequest, callListPackages } from "./ledger-request/request-packages.ts";
+export type { RecentUpdatesRead } from "./ledger-request/request-recent-updates.ts";
+export {
+  callGetRecentUpdates,
+  countTransactions,
+  RECENT_UPDATES_LOOKBACK,
+  RECENT_UPDATES_MAX_LOOKBACK,
+  RECENT_UPDATES_TARGET,
+  RECENT_UPDATES_WIDEN_FACTOR,
+  widenLookback,
+} from "./ledger-request/request-recent-updates.ts";
 export {
   buildGetUpdateByIdRequest,
   callGetUpdateById,
@@ -152,6 +162,7 @@ export type {
   LedgerCallOk,
   LedgerCallResult,
   LedgerFailureReason,
+  LedgerPartyFilter,
   LedgerRequest,
   LedgerSend,
 } from "./ledger-request/types.ts";
@@ -262,6 +273,16 @@ export type {
   UpdateVisibilityReason,
 } from "./update-detail/build-update-detail.ts";
 export { buildUpdateDetail } from "./update-detail/build-update-detail.ts";
+export type {
+  GroupableEvent,
+  UpdateViewGroup,
+} from "./update-detail/group-update-views.ts";
+export { groupUpdateViews } from "./update-detail/group-update-views.ts";
+export type {
+  NestableEvent,
+  UpdateEventPlacement,
+} from "./update-detail/nest-update-events.ts";
+export { nestUpdateEvents } from "./update-detail/nest-update-events.ts";
 export type {
   BuildViewerPartiesResult,
   ViewerPartiesUnavailable,

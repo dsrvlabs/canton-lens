@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { type TestContext, test } from "node:test";
+import { interpretLedgerResponse } from "@canton-lens/core";
 import type { AuthorizedLedgerRequest } from "../ledger-send-with-token.ts";
 import { buildApp } from "../live/build-app.mjs";
 import { assertServiceLedgerBase, readLedgerAuthConfig } from "./config.ts";
@@ -578,6 +579,52 @@ test("transport tracks auth failures even when a route could otherwise return pa
       body: {
         reason: status === 401 ? "shared_identity_unavailable" : "shared_identity_forbidden",
       },
+    });
+  }
+});
+
+test("an error name survives the transport, and nothing else in the body does", async () => {
+  // Four of the failures interpret.ts names arrive as a JsCantonError name rather than as a status code.
+  // Dropping the whole body left it nothing to read them from, so under shared identity a pruned past, a
+  // point not yet reached and a list past the node's limit each came back as node_error — "the node
+  // refused" about a node that was answering. `code` is a fixed term from the node's own error taxonomy;
+  // `cause` is prose the node writes around the values it was given, so that is still dropped.
+  const provider = new ServiceTokenProvider(config(), {
+    fetch: async (url) =>
+      Response.json(String(url).includes("/.well-known/") ? metadata : validToken()),
+  });
+  const request = serviceRequest(provider, async () => ({
+    status: 413,
+    body: {
+      code: "JSON_API_MAXIMUM_LIST_ELEMENTS_NUMBER_REACHED",
+      cause: "The number of matching elements (201) is greater than the node limit (200).",
+      secret,
+    },
+  }));
+  const response = await request.send({ method: "POST", path: "/v2/state/active-contracts" });
+  assert.deepEqual(response, {
+    status: 413,
+    body: { code: "JSON_API_MAXIMUM_LIST_ELEMENTS_NUMBER_REACHED" },
+  });
+  const serialized = JSON.stringify(response);
+  assert.ok(!serialized.includes(secret), "no configured value leaves the transport");
+  assert.ok(!serialized.includes("201"), "the node's prose does not leave the transport either");
+  // What the name is for: the reason reaches the caller accurately instead of collapsing to node_error.
+  const interpreted = interpretLedgerResponse(response.status, response.body);
+  assert.ok(!interpreted.ok);
+  assert.equal(interpreted.reason, "too_many_elements");
+});
+
+test("a body with no error name still arrives as null", async () => {
+  const provider = new ServiceTokenProvider(config(), {
+    fetch: async (url) =>
+      Response.json(String(url).includes("/.well-known/") ? metadata : validToken()),
+  });
+  for (const body of [null, "not an object", { code: 7 }, { cause: secret }]) {
+    const request = serviceRequest(provider, async () => ({ status: 500, body }));
+    assert.deepEqual(await request.send({ method: "GET", path: "/v2/state/ledger-end" }), {
+      status: 500,
+      body: null,
     });
   }
 });

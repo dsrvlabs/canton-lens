@@ -8,9 +8,15 @@ export const SAID: Record<string, string> = {
     "The gateway forwarded an authentication header that Explorer cannot accept in Shared Identity Mode. Contact your operator.",
   unauthenticated: "No token, or it has expired",
   forbidden: "Outside this user's rights",
+  no_party_rights:
+    "This account has no party rights on this participant, so there is nothing to show",
+  no_own_parties:
+    "This account reads as every party on the participant and holds none of its own, so there is no 'mine' to report here",
   not_found:
     "No such thing — or it is outside what you can see. Archived contracts are not in this view",
   node_error: "The node refused",
+  too_many_elements:
+    "This list is larger than the node will return in one response. Ask your operator to raise the participant's JSON API list limit",
   unreachable: "Could not reach the node",
   exchange_failed: "Could not exchange the login token for a ledger token",
   explorer_unreachable: "The front could not reach the Explorer — is it running?",
@@ -27,7 +33,7 @@ export const SAID: Record<string, string> = {
   invalid_interface_id: "The interface id is empty — leave it out instead",
   invalid_limit: "The row limit must be a whole number of 1 or more",
   invalid_window: "The window's start must not come after its end",
-  window_too_wide: "That window is wider than 5,000 offsets — narrow it, or read it in parts",
+  window_too_wide: "That window is wider than 128,000 offsets — narrow it, or read it in parts",
 };
 
 // Failure name → phrase. A name not in the dictionary is exposed as is (that too is what the server said).

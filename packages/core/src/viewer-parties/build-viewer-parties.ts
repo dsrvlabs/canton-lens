@@ -93,9 +93,28 @@ export function buildViewerParties(user: unknown, rights: unknown): BuildViewerP
       }
     }
 
+    // **Only CanReadAsAnyParty.** ParticipantAdmin used to count here too, and it does not belong: it is a
+    // right to administer the participant, not a right to read from it. Measured against Canton 3.5.15 on
+    // 2026-09-15 — a user holding ParticipantAdmin and no CanReadAsAnyParty is answered 403 for a request
+    // carrying filtersForAnyParty, while the same user with CanReadAsAnyParty is answered 200. The node's
+    // own document says as much: CanReadAsAnyParty is "the rights of a participant's super reader", and it
+    // is the right named where the API allows a party list to be left out.
+    //
+    // Counting ParticipantAdmin gave an administrator a scope saying they could read the whole instance
+    // and a screen that could show them nothing, since every read they could make would be refused.
+    // **The shape is checked, not just the key.** The node's schema gives this right a `value` object, the
+    // same as CanReadAs and CanActAs above, so both levels are required. `!== undefined` alone accepted
+    // null, false and a bare key; checking only the outer level still accepted `{}` and an array. None is
+    // a shape a valid response produces. That was harmless while the scope only chose a badge; it now
+    // chooses what the request asks for, so it is read the way the other rights are read.
     if (
       !matchedPartyKind &&
-      (kind.ParticipantAdmin !== undefined || kind.CanReadAsAnyParty !== undefined)
+      isRecord(kind.CanReadAsAnyParty) &&
+      // isRecord is "a non-null object", which an array is. The node sends `{ value: {} }` here, so an
+      // array at either level is not the shape and must not read as the right.
+      !Array.isArray(kind.CanReadAsAnyParty) &&
+      isRecord(kind.CanReadAsAnyParty.value) &&
+      !Array.isArray(kind.CanReadAsAnyParty.value)
     ) {
       instanceWide = true;
     }

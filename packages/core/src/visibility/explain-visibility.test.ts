@@ -96,8 +96,61 @@ test("answers in viewer-party order", () => {
   );
 });
 
-test("no viewer parties is no_party_found — no role is invented against an empty list", () => {
+test("no viewer parties of my own is its own status — not a search that failed", () => {
+  // The viewer that reaches here with an empty list is the super reader (CanReadAsAnyParty): they read as
+  // every party and hold none. no_party_found would say a match was looked for and not found, which the
+  // screen words as “the material is lacking” — about material that is complete.
   assert.deepEqual(explainVisibility([], { signatories: [ALICE], observers: [BOB] }), {
+    status: "no_own_parties",
+  });
+  // The distinction is kept: a viewer who does hold a party, and does not appear, still gets no_party_found.
+  assert.deepEqual(explainVisibility([CAROL], { signatories: [ALICE], observers: [BOB] }), {
     status: "no_party_found",
   });
+});
+
+// ── controller — the capacity an exercised event brings ───────────────────────
+
+test("an acting party is controller, not a witness — exercising is not seeing from above", () => {
+  // An exercised event carries no stakeholders of its own; before the capacity existed, the party that
+  // exercised the choice was reported as a witness, which says the opposite of what it did.
+  const r = explainVisibility([ALICE], {
+    signatories: [],
+    observers: [],
+    witnessParties: [ALICE, BOB],
+    actingParties: [ALICE],
+  });
+  assert.deepEqual(r, { status: "ok", reasons: [{ party: ALICE, roles: ["controller"] }] });
+});
+
+test("a stakeholder who also acted is both — the capacities are counted separately", () => {
+  const r = explainVisibility([ALICE], {
+    signatories: [ALICE],
+    observers: [],
+    witnessParties: [ALICE],
+    actingParties: [ALICE],
+  });
+  assert.deepEqual(r, {
+    status: "ok",
+    reasons: [{ party: ALICE, roles: ["signatory", "controller"] }],
+  });
+});
+
+test("witness still means neither of the three — the fallback did not widen", () => {
+  const r = explainVisibility([BOB], {
+    signatories: [ALICE],
+    observers: [],
+    witnessParties: [BOB],
+    actingParties: [ALICE],
+  });
+  assert.deepEqual(r, { status: "ok", reasons: [{ party: BOB, roles: ["witness"] }] });
+});
+
+test("acting parties that are not a string array are a lacking material, not an empty answer", () => {
+  const r = explainVisibility([ALICE], {
+    signatories: [ALICE],
+    observers: [],
+    actingParties: "alice",
+  });
+  assert.deepEqual(r, { status: "unavailable", reason: "acting_parties_not_string_array" });
 });

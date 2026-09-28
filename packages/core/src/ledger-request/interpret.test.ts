@@ -95,6 +95,43 @@ test("with no name the status code decides — everything outside 200·401·403�
   }
 });
 
+test("JSON_API_MAXIMUM_LIST_ELEMENTS_NUMBER_REACHED is too_many_elements — the node did not refuse, the list was too long", () => {
+  // The real shape a real participant gave, replayed against Canton 3.5.15 with a live token:
+  //   413 {"code":"JSON_API_MAXIMUM_LIST_ELEMENTS_NUMBER_REACHED",
+  //        "cause":"The number of matching elements (201) is greater than the node limit (200)."}
+  // 413 is not among the mapped status codes, so without the name this reads as node_error (502) and the
+  // operator is told “the node refused” when nothing is broken.
+  const body = {
+    code: "JSON_API_MAXIMUM_LIST_ELEMENTS_NUMBER_REACHED",
+    cause: "The number of matching elements (201) is greater than the node limit (200).",
+  };
+  for (const status of [413, 400, 500]) {
+    const r = interpretLedgerResponse(status, body);
+    assert.ok(!r.ok);
+    assert.equal(r.reason, "too_many_elements", `must hold regardless of status code ${status}`);
+  }
+  const one = interpretLedgerResponse(413, body);
+  assert.ok(!one.ok);
+  assert.ok(!(one.detail ?? "").includes("201"), "the body text is not put into detail");
+  // Without the name a 413 is still node_error — the status alone carries no meaning here, and the node's
+  // own OpenAPI declares 413 on no path at all.
+  const bare = interpretLedgerResponse(413, null);
+  assert.ok(!bare.ok);
+  assert.equal(bare.reason, "node_error");
+});
+
+test("the list-limit name is matched **exactly** too", () => {
+  for (const code of [
+    "JSON_API_MAXIMUM_LIST_ELEMENTS_NUMBER_REACHED_AGAIN",
+    "X_JSON_API_MAXIMUM_LIST_ELEMENTS_NUMBER_REACHED",
+    "JSON_API_MAXIMUM_LIST_ELEMENTS_NUMBER",
+  ]) {
+    const r = interpretLedgerResponse(413, { code });
+    assert.ok(!r.ok);
+    assert.equal(r.reason, "node_error", `${code} is not the list-limit name`);
+  }
+});
+
 test("a body that arrives as null because it was not JSON does not throw", () => {
   // serve.mjs turns a JSON.parse failure into body:null (since the false unreachable was removed).
   const r = interpretLedgerResponse(400, null);

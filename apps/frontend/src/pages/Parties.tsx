@@ -7,12 +7,27 @@ import {
   SectionBody,
   Table,
 } from "@canton-lens/design-system";
+import type { SessionResponse } from "../api/types.ts";
 import { PartyChip } from "../format/chips.tsx";
 import { RawJson } from "../format/typed.tsx";
 import { useSession } from "../session/SessionContext.tsx";
 
+// **The drawing is split from the fetching.** Everything below `…View` is a function of one response and
+// nothing else: no context, no effect, no clock. That is what lets a test hand it the answer a real
+// participant gave and look at the rows that come out — with the two joined, a static render only ever
+// reaches the "reading…" branch and the screen itself is never looked at (2026-09-18).
 export function Parties() {
   const { session, loading } = useSession();
+  return <PartiesView session={session ?? null} loading={loading} />;
+}
+
+export function PartiesView({
+  session,
+  loading,
+}: {
+  session: SessionResponse | null;
+  loading: boolean;
+}) {
   const view = session?.outcome === "view" ? session : null;
   return (
     <div id="view-parties">
@@ -45,7 +60,7 @@ export function Parties() {
                   <MessageRow colSpan={3}>
                     {view.scope === "own"
                       ? "No party-specific rights assigned"
-                      : "No party-specific rights assigned. See Status for instance-wide access."}
+                      : "No party-specific rights assigned — this account reads as every party on the participant."}
                   </MessageRow>
                 ) : (
                   [...view.parties]

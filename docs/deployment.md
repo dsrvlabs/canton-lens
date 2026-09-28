@@ -99,6 +99,21 @@ should forward `/openapi.json` without acquiring a user token. A missing session
 Serve the Frontend and BFF through one browser origin. In development,
 `BACKEND_PROXY_TARGET` points to the institution front rather than directly to the Backend.
 
+## Link previews
+
+Set `VITE_PUBLIC_URL` in `apps/frontend/.env` (or `docker/.env` for Compose) to the
+public app directory before building, for example `https://explorer.example/` or
+`https://example.com/explorer/`. The frontend emits Open Graph and X card metadata
+directly into its HTML, with absolute image and canonical URLs based on this value.
+Rebuild after changing it. When omitted, the image path is relative for local preview
+and no canonical URL is emitted.
+
+The bundled `og-image.png` contains only the product name, logo, and description.
+It is served as a static file alongside `index.html`. Sharing services must be able
+to fetch both files to display the preview; keep existing access controls on ledger APIs.
+All hash routes share the same product preview. The metadata follows the
+[Open Graph protocol](https://ogp.me/).
+
 ## Preview the build locally
 
 Build the Frontend:
@@ -217,6 +232,29 @@ Two further conditions are not settled by this file:
 - nginx forwards the `Authorization` header unchanged and makes no authentication decision. In
   `browser-oidc` the user's Canton token travels through it.
 - Review the [security checklist](security.md#deployment-checklist).
+
+## The participant's JSON API list limit
+
+A Canton participant refuses to put more than `http-list-max-elements-limit` elements (default 200) in
+one JSON API response. Over that it answers `413` with the error code
+`JSON_API_MAXIMUM_LIST_ELEMENTS_NUMBER_REACHED`. Explorer reports that as `502` with
+`{"reason":"too_many_elements"}`, and the screen says the list is larger than the node will return in one
+response.
+
+Explorer asks `/v2/state/active-contracts` and `/v2/updates` in pages, so those two are bounded by
+Explorer rather than by the node's limit — up to 10,000 elements or 200 pages per read, past which the
+same `too_many_elements` is returned rather than a shortened list.
+
+Two calls have no pagination parameter in the Canton 3.5 Ledger API and are therefore bounded only by
+that node setting:
+
+| Call | Screen | Condition |
+|---|---|---|
+| `GET /v2/packages` | `/api/catalog/packages` | The participant vets more packages than the limit |
+| `GET /v2/users/{user}/rights` | `/api/session`, and every screen that resolves the viewer | The Canton user holds more rights than the limit (the participant advertises `maxRightsPerUser`, default 1000) |
+
+The remedy for both is the node's `http-list-max-elements-limit`. Raising it raises the participant's
+memory use on those responses.
 
 ## Production
 

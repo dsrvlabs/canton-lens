@@ -197,6 +197,12 @@ export function Choices({ choices }: { choices: readonly ChoiceLite[] | null | u
 
 // Raw JSON disclosure — arguments are Raw JSON from here on (the decoder is "more human words", not a
 // precondition for showing them).
+//
+// A value that fits on one line is written out beside its label instead. `{}` behind a disclosure inside a
+// block of its own is three interactions and a frame around two characters that were never hidden worth
+// hiding; only a value large enough to push the rows apart earns the fold.
+const INLINE_WIDTH = 72;
+
 export function RawJson({
   label,
   value,
@@ -209,9 +215,16 @@ export function RawJson({
   style?: CSSProperties;
 }) {
   if (value === undefined || value === null) return null;
+  const text = JSON.stringify(value, null, 1);
+  if (!text.includes("\n") && text.length <= INLINE_WIDTH)
+    return (
+      <div className="raw-inline" style={style}>
+        <Muted>{label}</Muted> <code className="clds-mono clds-code-inline">{text}</code>
+      </div>
+    );
   return (
     <Disclosure summary={label} open={open} style={style}>
-      <pre className="clds-mono clds-scroll">{JSON.stringify(value, null, 1)}</pre>
+      <pre className="clds-mono clds-scroll">{text}</pre>
     </Disclosure>
   );
 }
