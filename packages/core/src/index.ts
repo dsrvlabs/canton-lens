@@ -81,6 +81,15 @@ export { LfDecodeError, readLf2Package } from "./daml-lf/lf2-package.ts";
 export { typeHead, typeText } from "./daml-lf/type-text.ts";
 export type { SchemaLookup, TypedField, TypedValue } from "./daml-lf/typed-payload.ts";
 export { typeRecordFields, typeValue } from "./daml-lf/typed-payload.ts";
+export {
+  buildTransactionsSheetRows,
+  TRANSACTIONS_COLUMNS,
+  transactionsFileName,
+} from "./export/transactions-sheet.ts";
+export type { Sheet } from "./export/xlsx.ts";
+export { buildXlsx, cellRef, sheetName } from "./export/xlsx.ts";
+export type { ZipEntry } from "./export/zip.ts";
+export { zip } from "./export/zip.ts";
 export type {
   TimeBucketSource,
   UpdateTimeDistribution,
