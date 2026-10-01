@@ -101,6 +101,16 @@ export type UpdatesResponse = Stamped &
     filter: UpdateFilter;
   };
 
+// ── GET /api/updates/after/{offset} ──────────────────────────────────────────────
+
+export type UpdatesAfterResponse = Stamped &
+  WithOffset & {
+    /** Every update in (beginExclusive, offset] with an event visible to the viewer, newest first. Not filtered, not paged. */
+    rows: RecentUpdateRow[];
+    /** Where the read started (exclusive): the offset the address named, or offset − 2,000 when the address named something older — the updates between were not read. */
+    beginExclusive: number;
+  };
+
 // ── GET /api/timeline ────────────────────────────────────────────────────────────
 
 export type TimelineResponse = Stamped &

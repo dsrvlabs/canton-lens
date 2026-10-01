@@ -179,6 +179,16 @@ export const ROUND_ONE: readonly EndpointSpec[] = [
     filled: (body, given) => listMatches(len(body, "rows"), given.seesUpdates, "rows"),
   },
   {
+    // **The live feed, asked from the start.** From 0 the range is (0, ledgerEnd] — the same range the
+    // recent list reads on a ledger shorter than its first window, so the recording holds the node's answer
+    // to exactly this question. Asked from any later point the range would be one the tape never saw.
+    template: "/api/updates/after/{offset}",
+    url: () => "/api/updates/after/0",
+    name: "/api/updates/after/{offset} (from the start)",
+    status: needsAParty,
+    filled: (body, given) => listMatches(len(body, "rows"), given.seesUpdates, "rows"),
+  },
+  {
     template: "/api/timeline",
     // Asks with the window **pinned.** The default (the lists' recent window) depends on what the ledger
     // holds, so it can change with the recording, and when it does this check would ask for a range the
@@ -424,6 +434,22 @@ export const ROUND_TWO: readonly EndpointSpec[] = [
     },
   },
   {
+    // **The live feed, asked at the ledger end — the question it asks on every quiet tick.** (end, end] is
+    // empty, so the right answer is an empty list, and **empty is required here**: a row arriving for a range
+    // that holds nothing would be a row from some other range.
+    template: "/api/updates/after/{offset}",
+    url: (h) => (h.ledgerEnd === null ? null : `/api/updates/after/${h.ledgerEnd}`),
+    name: "/api/updates/after/{offset} (at the ledger end)",
+    need: "ledgerEnd (offset of /api/updates)",
+    status: needsAParty,
+    unaskable: (given) =>
+      canRead(given) ? null : "holds no reading scope, so the ledger end was never read",
+    filled: (body) => {
+      const rows = len(body, "rows");
+      return rows === 0 ? null : `${rows} rows arrived for the empty range at the ledger end`;
+    },
+  },
+  {
     template: "/api/updates/by-offset/{offset}",
     url: (h) => (h.offset === null ? null : `/api/updates/by-offset/${h.offset}`),
     need: "offset (rows[0].offset of /api/updates)",
@@ -513,6 +539,8 @@ export type Harvest = {
    * would be checking a rule against its own arithmetic instead of against the one the answer carries.
    */
   nextPage: string | null;
+  /** The ledger end round one read at — the `offset` /api/updates stamped on its answer. */
+  ledgerEnd: number | null;
 };
 
 export function harvest(bodies: ReadonlyMap<string, unknown>): Harvest {
@@ -543,5 +571,9 @@ export function harvest(bodies: ReadonlyMap<string, unknown>): Harvest {
     packageId: str(okPackage?.packageId),
     partyId: str(firstParty?.party),
     nextPage,
+    ledgerEnd: (() => {
+      const offset = rec(bodies.get("/api/updates")).offset;
+      return typeof offset === "number" ? offset : null;
+    })(),
   };
 }

@@ -72,6 +72,9 @@ export const ContractHead = () => (
 // No link is made for an archived contract — contract detail is read from the ACS (active), so clicking it
 // would only give a 404.
 const SUMMARY_CHIPS = 2;
+// An absent class is no prop at all — the row link's className is optional, not "or undefined".
+const classOf = (name: string | undefined): { className?: string } =>
+  name === undefined ? {} : { className: name };
 export const UpdateHead = () => (
   <tr>
     <th>Time</th>
@@ -86,15 +89,18 @@ export const UpdateHead = () => (
 export function UpdateRows({
   rows,
   offsetHref,
+  rowClass,
 }: {
   rows: readonly RecentUpdateRow[];
   offsetHref?: (offset: number) => string;
+  /** A class for one row — the live feed marks the rows that arrived while it was open. */
+  rowClass?: (row: RecentUpdateRow) => string | undefined;
 }) {
   return (
     <>
       <UpdateHead />
       {rows.map((r) => (
-        <RowLink key={r.updateId} to={href.tx(r.updateId)}>
+        <RowLink key={r.updateId} to={href.tx(r.updateId)} {...classOf(rowClass?.(r))}>
           <td>
             <Mono className="clds-muted">{ts(r.effectiveAt)}</Mono>
           </td>

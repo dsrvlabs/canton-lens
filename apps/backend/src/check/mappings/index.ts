@@ -22,6 +22,7 @@ import { templatesCatalogMapping } from "./templates-catalog.ts";
 import { timelineMapping } from "./timeline.ts";
 import { updateDetailMapping } from "./update-detail.ts";
 import { updatesMapping } from "./updates.ts";
+import { updatesAfterMapping } from "./updates-after.ts";
 
 /** Keyed by the check table's name for the address (`spec.name ?? spec.template`). */
 export const MAPPINGS: Record<string, Mapping<CheckContext>> = {
@@ -49,6 +50,10 @@ export const MAPPINGS: Record<string, Mapping<CheckContext>> = {
   "/api/session": sessionMapping,
   "/api/updates": updatesMapping,
   "/api/updates (every one)": updatesMapping,
+  // The feed's two questions — a range with content and the empty range at the end. One set of rules; the
+  // offset is read off the address.
+  "/api/updates/after/{offset} (from the start)": updatesAfterMapping,
+  "/api/updates/after/{offset} (at the ledger end)": updatesAfterMapping,
   // The same rules answer both addresses: they differ only in how the update was named, and what an update
   // *is* cannot depend on that.
   "/api/updates/{updateId}": updateDetailMapping,

@@ -90,9 +90,9 @@ test("the zeros that are right are exactly twenty-three, and every one of them h
     );
   }
 
-  // A viewer with no reading scope: the seven round-two addresses all come from a list that is refused them.
+  // A viewer with no reading scope: the eight round-two addresses all come from a list that is refused them.
   for (const name of ["nobody", "idp", "padmin"]) {
-    assert.equal(zeros[name]?.length, 7, `${name} should have seven`);
+    assert.equal(zeros[name]?.length, 8, `${name} should have eight`);
   }
   // A super reader is served everything and still has no party of their own to look up.
   assert.deepEqual(zeros.super, ["/api/party/{partyId}"]);
@@ -112,9 +112,9 @@ test("the zeros that are right are exactly twenty-three, and every one of them h
   }
 
   const total = Object.values(zeros).reduce((n, list) => n + list.length, 0);
-  assert.equal(total, 27, `the legitimate zeros moved: ${JSON.stringify(zeros)}`);
-  // Twelve people × twenty-one addresses, less the zeros.
-  assert.equal(12 * 21 - total, 225);
+  assert.equal(total, 30, `the legitimate zeros moved: ${JSON.stringify(zeros)}`);
+  // Twelve people × twenty-three addresses, less the zeros.
+  assert.equal(12 * 23 - total, 246);
 });
 
 test("the probes nobody has the material for are these, person by person", () => {
@@ -176,13 +176,14 @@ test("a viewer with no reading scope is served, refused and left unasked in the 
     report.findings.filter((f) => f.level === "responds"),
     [],
   );
-  // And the seven that could not be asked are written down with a reason rather than counted as failures.
+  // And the eight that could not be asked are written down with a reason rather than counted as failures.
   assert.deepEqual(
     report.notAsked.map((n) => n.url),
     [
       "/api/contracts (the second page)",
       "/api/contracts/{contractId}",
       "/api/updates/{updateId}",
+      "/api/updates/after/{offset} (at the ledger end)",
       "/api/updates/by-offset/{offset}",
       "/api/packages/{packageId}/schema",
       "/api/party/{partyId}",
@@ -203,9 +204,9 @@ test("a viewer with no reading scope is served, refused and left unasked in the 
     ],
   );
   for (const n of report.notAsked) assert.ok(n.why.length > 0, `${n.url} has no reason`);
-  // Fourteen round-one addresses, plus the five probes that need nothing of this person's own to build:
+  // Fifteen round-one addresses, plus the five probes that need nothing of this person's own to build:
   // three "absent" ids, the offset past the end, and the package that is nobody's.
-  assert.equal(report.asked, 14 + 5, "the fourteen round-one addresses were all put to them");
+  assert.equal(report.asked, 15 + 5, "the fifteen round-one addresses were all put to them");
 });
 
 test("describing a person wrongly turns the check red rather than quietly green", async () => {

@@ -3898,6 +3898,36 @@ export const responseSchemas = {
     required: ["party", "roles", "eventIndexes"],
     additionalProperties: false,
   },
+  UpdatesAfterResponse: {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      rows: {
+        type: "array",
+        items: {
+          $ref: "#/components/schemas/RecentUpdateRow",
+        },
+        description:
+          "Every update in (beginExclusive, offset] with an event visible to the viewer, newest first. Not filtered, not paged.",
+      },
+      beginExclusive: {
+        type: "number",
+        description:
+          "Where the read started (exclusive): the offset the address named, or offset − 2,000 when the address named something older — the updates between were not read.",
+      },
+      offset: {
+        type: "number",
+      },
+      readAt: {
+        type: "string",
+        description:
+          "The time this response was read (RFC 3339). Stamped on every 200 response not by the router (router.ts) but by the boot file (live/build-app.mjs) that owns the socket — the router does not call the clock.",
+        pattern:
+          "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$",
+      },
+    },
+    required: ["beginExclusive", "offset", "readAt", "rows"],
+  },
   UpdatesResponse: {
     type: "object",
     additionalProperties: false,
