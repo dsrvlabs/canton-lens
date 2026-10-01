@@ -18,7 +18,6 @@ import { Contracts } from "./pages/Contracts.tsx";
 import { Developer } from "./pages/Developer.tsx";
 import { Holdings } from "./pages/Holdings.tsx";
 import { Home } from "./pages/Home.tsx";
-import { Live } from "./pages/Live.tsx";
 import { Offers } from "./pages/Offers.tsx";
 import { Parties } from "./pages/Parties.tsx";
 import { Preapprovals } from "./pages/Preapprovals.tsx";
@@ -43,7 +42,6 @@ export function App() {
 const TITLES: Record<string, string> = {
   search: "Search",
   transactions: "Transactions",
-  live: "Live",
   timeline: "Timeline",
   contracts: "Contracts",
   offers: "Transfer offers",
@@ -143,8 +141,6 @@ function Page({ route, hash }: { route: Route; hash: string }) {
       return <Search hash={hash} />;
     case "transactions":
       return <Transactions hash={hash} />;
-    case "live":
-      return <Live hash={hash} />;
     case "contracts":
       return <Contracts hash={hash} />;
     case "offers":

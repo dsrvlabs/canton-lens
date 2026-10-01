@@ -55,7 +55,6 @@ export type Route =
   | { view: "home" }
   | { view: "search" }
   | { view: "transactions" }
-  | { view: "live" }
   | { view: "timeline" }
   | { view: "contracts" }
   | { view: "offers" }
@@ -94,7 +93,6 @@ export function parseRoute(hash: string): Route {
   }
   if (what === "search") return { view: "search" };
   if (what === "transactions") return { view: "transactions" };
-  if (what === "live") return { view: "live" };
   if (what === "timeline") return { view: "timeline" };
   if (what === "contracts") return { view: "contracts" };
   if (what === "offers") return { view: "offers" };

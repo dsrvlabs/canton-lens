@@ -236,6 +236,8 @@ test("transactions: every update the answer holds is drawn, with its events", as
     u.rows.map((r) => short(r.updateId, 8)),
     "an update the answer holds is not on the screen",
   );
+  // The live switch stands in the toolbar of the paged list.
+  assert.match(html, /id="tx-live"/);
   for (const one of u.rows) {
     const row = rowShowing(html, short(one.updateId, 8));
     shows(
@@ -516,7 +518,13 @@ test("timeline: every lifetime is drawn, and one that ends unseen is not drawn a
 
 // ── Live ────────────────────────────────────────────────────────────────────────
 
-const liveProps = { every: 3, big: false, hash: "#/live", onPause() {}, onRetry() {} };
+const liveProps = {
+  every: 3,
+  big: false,
+  hash: "#/transactions?live=1",
+  onPause() {},
+  onRetry() {},
+};
 
 test("live: every update of the tail is drawn, and only what arrived is marked as new", async () => {
   const { LiveView } = await load("/src/pages/Live.tsx");
@@ -562,8 +570,9 @@ test("live: every update of the tail is drawn, and only what arrived is marked a
       "a row from the first read is marked as new",
     );
   }
-  // The state line: live, how often, and at which point.
+  // The state line: live, how often, and at which point — and the switch to turn it off.
   assert.match(html, /live · every 3s/);
+  assert.match(html, /Live on/);
   shows(html, [u.offset.toLocaleString("en-US")], "the ledger end is not on the screen");
   assert.match(draw(LiveView, { ...liveProps, big: true, feed, error: null, paused: false }), /live-big/);
 });

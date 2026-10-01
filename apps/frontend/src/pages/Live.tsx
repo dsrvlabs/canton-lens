@@ -1,11 +1,11 @@
-// **Live** — the transactions screen for a screen that stays open. Updates as the participant records them,
-// newest on top, read a few seconds at a time by asking the one question that stays small however long the
-// screen is up: "what happened after the point I last saw" (/api/updates/after/{offset}). When nothing
-// moved, that answer is one ledger-end read and an empty list.
+// **Live** — the Transactions screen's live mode (`#/transactions?live=1`), for a screen that stays open.
+// Updates as the participant records them, newest on top, read a few seconds at a time by asking the one
+// question that stays small however long the screen is up: "what happened after the point I last saw"
+// (/api/updates/after/{offset}). When nothing moved, that answer is one ledger-end read and an empty list.
 //
-// **Nothing runs while this screen is not open.** The timer is this component's and is cleared with it; no
-// other screen re-reads on a clock. It also stops on its own when the tab is hidden (the tick is skipped),
-// when a read fails (until Retry), and when paused.
+// **Nothing runs while the switch is off.** The timer is this component's and is cleared with it, and the
+// component is only mounted while the address says live; no other screen re-reads on a clock. It also stops
+// on its own when the tab is hidden (the tick is skipped), when a read fails (until Retry), and when paused.
 //
 // The fetching half holds the timer and the tail. The drawing half is a function of its props and nothing
 // else, so a test can hand it a recorded answer and look at the screen (screens.test.mjs).
@@ -15,7 +15,7 @@ import { messageOf } from "../api/client.ts";
 import type { RecentUpdateRow, UpdatesAfterResponse, UpdatesResponse } from "../api/types.ts";
 import { fmtOffset, fmtTime } from "../format/format.ts";
 import { UpdateRows } from "../format/rows.tsx";
-import { hashQuery, hashWith } from "../route/hash.ts";
+import { hashQuery, hashWith, setHashParams } from "../route/hash.ts";
 import { useSession } from "../session/SessionContext.tsx";
 
 /** Seconds between two reads when the address names none. The choices offered on screen. */
@@ -36,6 +36,8 @@ export function everyOf(hash: string): number {
 }
 /** `?big=1` — larger type, for a screen read from across a room. */
 export const isBig = (hash: string): boolean => hashQuery(hash).get("big") === "1";
+/** `?live=1` — the switch. The Transactions screen hands itself to this mode while it is on. */
+export const isLive = (hash: string): boolean => hashQuery(hash).get("live") === "1";
 
 export type LiveFeed = {
   /** Newest first. At most LIVE_KEEP. */
@@ -192,10 +194,10 @@ export function LiveView({
     );
   return (
     <Section
-      id="live-box"
+      id="tx-box"
       className={big ? "live live-big" : "live"}
-      title="Live"
-      subtitle="as the participant records them"
+      title="Transactions"
+      subtitle="live — as the participant records them"
       note={
         <span id="live-state">
           {state}
@@ -210,6 +212,16 @@ export function LiveView({
       }
       foot={
         <span id="live-controls" className="live-controls">
+          {/* Off — back to the paged list. Only the switch leaves the address; big and every stay for next time. */}
+          <Button
+            id="tx-live"
+            size="xs"
+            variant="outline"
+            onClick={() => setHashParams({ live: null })}
+            title="Back to the paged list"
+          >
+            ● Live on
+          </Button>
           <Button size="xs" onClick={onPause} disabled={error !== null || feed === null}>
             {paused ? "Resume" : "Pause"}
           </Button>
@@ -232,7 +244,7 @@ export function LiveView({
             </a>
           </Muted>
           <Muted className="live-controls__note">
-            Polls only while this screen is open. Hidden tabs read nothing.
+            Polls only while the switch is on and this screen is open. Hidden tabs read nothing.
           </Muted>
         </span>
       }
@@ -252,8 +264,8 @@ export function LiveView({
               // Said at the top, where the newest rows are: everything above it arrived after the gap.
               <MessageRow>
                 Offsets {fmtOffset(feed.gap.from + 1)} to {fmtOffset(feed.gap.to)} were not read —
-                this screen was away longer than the feed reaches back. Open{" "}
-                <a href="#/transactions">Transactions</a> for them.
+                this screen was away longer than the feed reaches back. Switch Live off to page
+                through them.
               </MessageRow>
             ) : null}
             {feed === null ? (

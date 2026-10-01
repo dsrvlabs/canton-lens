@@ -2,6 +2,11 @@
 // 25 at a time** (keyset `before`). Not "all history" but "everything recent the node still remembers".
 // The filters (template and party) live in the address query and the server judges them — here we pass
 // the input on and draw the result.
+//
+// **Live** (`?live=1`) is the same screen on a clock: the list re-reads every few seconds and new updates
+// come in at the top (pages/Live.tsx). It is a switch in the toolbar and a value in the address, so a
+// screen left open on a wall bookmarks `#/transactions?live=1`. While it is on, the filters and the pages
+// step aside — a list that moves has no page to stand on.
 import {
   Button,
   MessageRow,
@@ -28,6 +33,7 @@ import {
   setHashParams,
 } from "../route/hash.ts";
 import { useSession } from "../session/SessionContext.tsx";
+import { isLive, Live } from "./Live.tsx";
 import { pickedTemplate, TEMPLATE_PINNED } from "./template-filter.ts";
 
 const TX_KEYS = ["template", "party", "before"] as const;
@@ -39,6 +45,12 @@ const newerStack: string[] = [];
 
 // **The fetching half.** It holds the session, the effect and the answer; it draws nothing.
 export function Transactions({ hash }: { hash: string }) {
+  // Switched on, the screen is the live mode's: it holds its own clock and reads nothing from here.
+  if (isLive(hash)) return <Live hash={hash} />;
+  return <TransactionsPaged hash={hash} />;
+}
+
+function TransactionsPaged({ hash }: { hash: string }) {
   const { api, lastOffset, loading, generation, templates } = useSession();
   // Suggestion material for the filter field — module:entity from my catalog. Typing help, not judgement.
   const templateOptions = (templates?.rows ?? []).map((r) => `${r.module}:${r.entity}`);
@@ -225,6 +237,16 @@ export function TransactionsView({
             Clear
           </Button>
           <span id="tx-filter-state">{filtered ? <ToolbarFlag>filtered</ToolbarFlag> : null}</span>
+          {/* The live switch. A page is left behind with the filters: the live list is the unfiltered tail. */}
+          <Button
+            id="tx-live"
+            size="xs"
+            variant="outline"
+            title="Re-read every few seconds and show new updates as they arrive"
+            onClick={() => setHashParams({ live: "1", before: null, template: null, party: null })}
+          >
+            ● Live
+          </Button>
         </ToolbarForm>
         <Scroll>
           <Table id="tx-list">

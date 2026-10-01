@@ -9,7 +9,6 @@ import type { Route } from "../route/hash.ts";
 const ITEMS: { view: string; href: string; label: string; sub?: boolean }[] = [
   { view: "home", href: "#/", label: "Home" },
   { view: "transactions", href: "#/transactions", label: "Transactions" },
-  { view: "live", href: "#/live", label: "Live", sub: true },
   { view: "contracts", href: "#/contracts", label: "Contracts" },
   { view: "tokens", href: "#/holdings", label: "Tokens" },
   { view: "holdings", href: "#/holdings", label: "Holdings", sub: true },
@@ -27,7 +26,6 @@ const DEVELOPER: typeof ITEMS = [
 ];
 // When a sub item lights up, its parent (Tokens · Catalog) lights up with it.
 const PARENTS: Record<string, string> = {
-  live: "transactions",
   holdings: "tokens",
   offers: "tokens",
   preapprovals: "tokens",
