@@ -573,6 +573,14 @@ test("live: every update of the tail is drawn, and only what arrived is marked a
   // The state line: live, how often, and at which point — and the switch to turn it off.
   assert.match(html, /live · every 3s/);
   assert.match(html, /Live on/);
+  // The ring: one segment per second of the interval, none on a one-second ring.
+  assert.match(html, /live-ring live-ring--on/);
+  assert.equal((html.match(/live-ring__mark/g) ?? []).length, 3, "a 3 s ring has three marks");
+  const oneSecond = draw(LiveView, { ...liveProps, every: 1, feed, error: null, paused: false });
+  assert.equal((oneSecond.match(/live-ring__mark/g) ?? []).length, 0, "a 1 s ring has no marks");
+  const flashed = draw(LiveView, { ...liveProps, feed, error: null, paused: false, arrived: true });
+  assert.match(flashed, /live-ring--arrived/, "an arrival flashes the ring");
+  assert.doesNotMatch(html, /live-ring--arrived/, "nothing arrived, nothing flashes");
   shows(html, [u.offset.toLocaleString("en-US")], "the ledger end is not on the screen");
   assert.match(draw(LiveView, { ...liveProps, big: true, feed, error: null, paused: false }), /live-big/);
 });
@@ -582,11 +590,14 @@ test("live: paused, a failed read, a skipped range and the first wait are each s
   const u = await answer("/api/updates");
   const feed = { rows: u.rows, offset: u.offset, fresh: new Set(), gap: null, readAt: u.readAt };
 
-  assert.match(draw(LiveView, { ...liveProps, feed, error: null, paused: true }), /paused/);
+  const pausedHtml = draw(LiveView, { ...liveProps, feed, error: null, paused: true });
+  assert.match(pausedHtml, /paused/);
+  assert.match(pausedHtml, /live-ring--paused/, "the ring holds while paused");
 
   const failed = draw(LiveView, { ...liveProps, feed, error: "unreachable", paused: false });
   assert.match(failed, /Could not fetch/);
   assert.match(failed, /Retry/);
+  assert.match(failed, /live-ring--problem/, "the ring says the read failed");
   // The rows it already had stay — a failed tick does not empty a screen on a wall.
   shows(
     failed,

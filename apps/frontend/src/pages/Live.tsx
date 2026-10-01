@@ -10,6 +10,7 @@
 // The fetching half holds the timer and the tail. The drawing half is a function of its props and nothing
 // else, so a test can hand it a recorded answer and look at the screen (screens.test.mjs).
 import { Button, MessageRow, Muted, Scroll, Section, Table } from "@canton-lens/design-system";
+import type React from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { messageOf } from "../api/client.ts";
 import type { RecentUpdateRow, UpdatesAfterResponse, UpdatesResponse } from "../api/types.ts";
@@ -59,6 +60,10 @@ export function Live({ hash }: { hash: string }) {
   const [feed, setFeed] = useState<LiveFeed | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [paused, setPaused] = useState(false);
+  // How many answers have come back since the first read, and whether the last one brought rows — what
+  // the ring is drawn from: it restarts on every answer and flashes on an arrival.
+  const [ticks, setTicks] = useState(0);
+  const [arrived, setArrived] = useState(false);
   // One read at a time. A slow answer must not pile the next tick on top of it.
   const inFlight = useRef(false);
   // The tick reads the offset to ask with from here rather than from a closure, so the timer never has to
@@ -92,6 +97,8 @@ export function Live({ hash }: { hash: string }) {
     try {
       const res = await api<UpdatesAfterResponse>(`/api/updates/after/${after}`);
       offsetRef.current = res.offset;
+      setTicks((t) => t + 1);
+      setArrived(res.rows.length > 0);
       setFeed((prev) => {
         if (prev === null) return prev;
         const known = new Set(prev.rows.map((r) => r.updateId));
@@ -150,6 +157,8 @@ export function Live({ hash }: { hash: string }) {
       every={every}
       big={isBig(hash)}
       hash={hash}
+      ticks={ticks}
+      arrived={arrived}
       onPause={() => setPaused((p) => !p)}
       onRetry={() => {
         setError(null);
@@ -169,6 +178,8 @@ export function LiveView({
   every,
   big,
   hash,
+  ticks = 0,
+  arrived = false,
   onPause,
   onRetry,
 }: {
@@ -178,19 +189,30 @@ export function LiveView({
   every: number;
   big: boolean;
   hash: string;
+  /** Answers since the first read — the ring restarts on each. */
+  ticks?: number;
+  /** Whether the last answer brought rows — the ring flashes. */
+  arrived?: boolean;
   onPause: () => void;
   onRetry: () => void;
 }) {
   const rows = feed?.rows ?? [];
+  const ring = (tone: "on" | "paused" | "problem") => (
+    <LiveRing every={every} tick={ticks} tone={tone} arrived={arrived && tone === "on"} />
+  );
   const state =
     error !== null ? (
-      <span className="live-state live-state--problem">● stopped — read failed</span>
+      <span className="live-state live-state--problem">
+        {feed === null ? "● " : ring("problem")}stopped — read failed
+      </span>
     ) : paused ? (
-      <span className="live-state live-state--paused">❚❚ paused</span>
+      <span className="live-state live-state--paused">{ring("paused")}paused</span>
     ) : feed === null ? (
       <span className="live-state">● reading…</span>
     ) : (
-      <span className="live-state live-state--on">● live · every {every}s</span>
+      <span className="live-state live-state--on">
+        {ring("on")}live · every {every}s
+      </span>
     );
   return (
     <Section
@@ -286,5 +308,53 @@ export function LiveView({
         </Table>
       </Scroll>
     </Section>
+  );
+}
+
+/** Where a tick mark sits on the ring — angle `i` of `of`, from the top, at radius `r` on a 20×20 face. */
+const markEnd = (i: number, of: number, r: number): [number, number] => {
+  const angle = (i / of) * 2 * Math.PI - Math.PI / 2;
+  return [10 + r * Math.cos(angle), 10 + r * Math.sin(angle)];
+};
+/** No mark on a one-second ring, and none past this many — a ring cut sixty ways is a dotted line. */
+const MAX_MARKS = 12;
+
+// **The ring** — one interval, drawn. It fills clockwise over `every` seconds and starts again on every
+// answer (`tick` is the key, so a new tick is a new element and the animation runs from the top). The
+// marks cut it into as many segments as seconds, in the canvas colour, so the fill looks counted rather
+// than poured. An arrival flashes it once. Paused holds it where it is; a failed read paints it full
+// and red. The motion is CSS (styles.css, `.live-ring`), none of it is state — and a person who asked
+// their system for less motion gets a still ring.
+export function LiveRing({
+  every,
+  tick,
+  tone,
+  arrived,
+}: {
+  every: number;
+  tick: number;
+  tone: "on" | "paused" | "problem";
+  arrived: boolean;
+}) {
+  const marks = every >= 2 && every <= MAX_MARKS ? every : 0;
+  return (
+    <svg
+      key={tick}
+      className={`live-ring live-ring--${tone}${arrived ? " live-ring--arrived" : ""}`}
+      viewBox="0 0 20 20"
+      aria-hidden="true"
+      focusable="false"
+      style={{ "--live-every": `${every}s` } as React.CSSProperties}
+    >
+      <circle className="live-ring__track" cx="10" cy="10" r="8" />
+      <circle className="live-ring__fill" cx="10" cy="10" r="8" />
+      {Array.from({ length: marks }, (_, i) => {
+        const [x1, y1] = markEnd(i, marks, 6);
+        const [x2, y2] = markEnd(i, marks, 10);
+        // A mark is named by where it sits — the same mark on the same ring is the same element.
+        const at = `${x2.toFixed(2)},${y2.toFixed(2)}`;
+        return <line key={at} className="live-ring__mark" x1={x1} y1={y1} x2={x2} y2={y2} />;
+      })}
+    </svg>
   );
 }

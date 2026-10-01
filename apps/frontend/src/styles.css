@@ -1265,3 +1265,70 @@
 .live-big .clds-badge {
   font-size: calc(var(--clds-text-caption) * 1.5);
 }
+
+/* The ring — one polling interval, drawn (pages/Live.tsx, LiveRing). The fill is a dashed stroke whose
+   offset runs from "all gap" to "no gap" over --live-every; the element is re-created on every answer, so
+   the animation always starts from the top. The marks sit on top in the canvas colour and cut the ring
+   into one segment per second. 2π·8 = 50.27 — the circumference the dash is measured against. */
+.live-ring {
+  width: 14px;
+  height: 14px;
+  vertical-align: -2px;
+  margin-right: var(--clds-space-2);
+}
+.live-ring__track {
+  fill: none;
+  stroke: var(--clds-color-rule);
+  stroke-width: 3;
+}
+.live-ring__fill {
+  fill: none;
+  stroke: var(--clds-color-positive);
+  stroke-width: 3;
+  stroke-dasharray: 50.27;
+  stroke-dashoffset: 50.27;
+  transform: rotate(-90deg);
+  transform-origin: 50% 50%;
+  animation: live-ring-fill var(--live-every, 3s) linear forwards;
+}
+@keyframes live-ring-fill {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+.live-ring__mark {
+  stroke: var(--clds-color-surface);
+  stroke-width: 1.5;
+}
+/* Something arrived on this answer: one flash in the brand colour as the ring restarts. */
+.live-ring--arrived .live-ring__fill {
+  animation:
+    live-ring-fill var(--live-every, 3s) linear forwards,
+    live-ring-flash 0.8s ease-out;
+}
+@keyframes live-ring-flash {
+  from {
+    stroke: var(--clds-color-brand);
+    filter: drop-shadow(0 0 3px var(--clds-color-brand));
+  }
+}
+.live-ring--paused .live-ring__fill {
+  animation-play-state: paused;
+  stroke: var(--clds-color-ink-dim);
+}
+.live-ring--problem .live-ring__fill {
+  animation: none;
+  stroke-dashoffset: 0;
+  stroke: var(--clds-color-problem);
+}
+.live-big .live-ring {
+  width: 22px;
+  height: 22px;
+  vertical-align: -4px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .live-ring__fill {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
+}
