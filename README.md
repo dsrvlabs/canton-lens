@@ -38,6 +38,7 @@ and presents only the data returned for the selected identity.
 | --- | --- |
 | **Overview** | Ledger position, visible contracts, token kinds, pending offers, and recent activity at one snapshot offset. |
 | **Transactions & contracts** | Update events, active contract payloads, signatories, observers, and decoded template fields and choices. |
+| **Live** | Transactions as the participant records them, newest first, re-read every few seconds — for a screen left open. Polls only while it is open. |
 | **Parties & tokens** | Party relationships, Splice token holdings, transfer instructions, and preapprovals. |
 | **Timeline** | Contract creation and archival across a selected range of ledger offsets. |
 | **Developer tools** | Installed Daml-LF packages, template definitions, participant status, and the OpenAPI document. |

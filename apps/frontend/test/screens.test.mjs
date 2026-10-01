@@ -513,3 +513,89 @@ test("timeline: every lifetime is drawn, and one that ends unseen is not drawn a
   );
   assert.match(html, /tl__bar--archived/, "no bar is drawn as archived");
 });
+
+// ── Live ────────────────────────────────────────────────────────────────────────
+
+const liveProps = { every: 3, big: false, hash: "#/live", onPause() {}, onRetry() {} };
+
+test("live: every update of the tail is drawn, and only what arrived is marked as new", async () => {
+  const { LiveView } = await load("/src/pages/Live.tsx");
+  const u = await answer("/api/updates");
+  assert.ok(u.rows.length > 1, "the recording has no updates to draw");
+  const [newest, ...older] = u.rows;
+  const feed = {
+    rows: u.rows,
+    offset: u.offset,
+    fresh: new Set([newest.updateId]),
+    gap: null,
+    readAt: u.readAt,
+  };
+  const html = draw(LiveView, { ...liveProps, feed, error: null, paused: false });
+
+  shows(
+    html,
+    u.rows.map((r) => short(r.updateId, 8)),
+    "an update of the tail is not on the screen",
+  );
+  for (const one of u.rows) {
+    const row = rowShowing(html, short(one.updateId, 8));
+    shows(
+      row,
+      [
+        ts(one.effectiveAt),
+        String(one.offset),
+        ...one.events.slice(0, 2).map((e) => `${e.kind} ${e.entity}`),
+      ],
+      `the row for ${short(one.updateId, 8)} is missing one of its own values`,
+    );
+  }
+  // The entrance belongs to the rows that arrived while the screen was open — not to the first read.
+  assert.match(
+    rowShowing(html, short(newest.updateId, 8)),
+    /live-fresh/,
+    "the row that arrived is not marked",
+  );
+  for (const one of older) {
+    assert.doesNotMatch(
+      rowShowing(html, short(one.updateId, 8)),
+      /live-fresh/,
+      "a row from the first read is marked as new",
+    );
+  }
+  // The state line: live, how often, and at which point.
+  assert.match(html, /live · every 3s/);
+  shows(html, [u.offset.toLocaleString("en-US")], "the ledger end is not on the screen");
+  assert.match(draw(LiveView, { ...liveProps, big: true, feed, error: null, paused: false }), /live-big/);
+});
+
+test("live: paused, a failed read, a skipped range and the first wait are each said", async () => {
+  const { LiveView } = await load("/src/pages/Live.tsx");
+  const u = await answer("/api/updates");
+  const feed = { rows: u.rows, offset: u.offset, fresh: new Set(), gap: null, readAt: u.readAt };
+
+  assert.match(draw(LiveView, { ...liveProps, feed, error: null, paused: true }), /paused/);
+
+  const failed = draw(LiveView, { ...liveProps, feed, error: "unreachable", paused: false });
+  assert.match(failed, /Could not fetch/);
+  assert.match(failed, /Retry/);
+  // The rows it already had stay — a failed tick does not empty a screen on a wall.
+  shows(
+    failed,
+    u.rows.map((r) => short(r.updateId, 8)),
+    "a failed read emptied the screen",
+  );
+
+  const gapped = draw(LiveView, {
+    ...liveProps,
+    feed: { ...feed, gap: { from: 100, to: 2_100 } },
+    error: null,
+    paused: false,
+  });
+  assert.match(gapped, /Offsets 101 to 2,100 were not read/);
+
+  // Before the first answer: said, not blank.
+  assert.match(
+    draw(LiveView, { ...liveProps, feed: null, error: null, paused: false }),
+    /Reading the ledger/,
+  );
+});

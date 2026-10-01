@@ -46,6 +46,13 @@ export const ROUTES: readonly Route[] = [
     template: "/api/updates/by-offset/{offset}",
     pattern: /^\/api\/updates\/by-offset\/([^/]+)$/,
   },
+  // The live feed's question — every update after one offset. Two segments, so the id form below cannot
+  // take it, and listed here all the same for the reason given above.
+  {
+    method: "GET",
+    template: "/api/updates/after/{offset}",
+    pattern: /^\/api\/updates\/after\/([^/]+)$/,
+  },
   // It does not accept digits only — if `-2` failed to match the path it would become “no such thing” (404),
   // and the place to say “the format is wrong” would disappear. Match the path broadly; malformed values are
   // cut off with a 400 at the validation site in the router.

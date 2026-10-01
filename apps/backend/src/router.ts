@@ -69,6 +69,14 @@ import { matchRoute } from "./routes.ts";
 // in this layer. **If the hash changes, this length changes too.**
 const UPDATE_ID_SHAPE = /^1220[0-9a-f]{64}$/;
 
+// **How far back one answer of /api/updates/after/{offset} reaches.** The feed asks "what happened after the
+// point I last saw" every few seconds, so the range is normally a handful of offsets. A screen that was
+// asleep for a day comes back asking for everything since, and reading that whole range is the recent list's
+// job (it widens by content, up to RECENT_UPDATES_MAX_LOOKBACK), not this one's. The range is cut at the
+// newest two thousand offsets and the answer says where the read really began, so the screen can say what
+// it skipped rather than draw the gap as "nothing happened".
+const UPDATES_AFTER_MAX_SPAN = 2_000;
+
 // **Schema cache** — content-addressed (packageId), so the decoded *shape* is the same value for everyone.
 // “No caching of ledger data” (a v1 non-goal — if the app keeps data whose answer differs per person in one
 // slot, it is a leak channel) is invariant. What this map holds is the parse result, not the permission to see
@@ -367,6 +375,7 @@ export async function routeRequest(
   const detailMatch = segment("/api/contracts/{contractId}");
   const partyMatch = segment("/api/party/{partyId}");
   const updateByOffsetMatch = segment("/api/updates/by-offset/{offset}");
+  const updatesAfterMatch = segment("/api/updates/after/{offset}");
   const updateDetailMatch = segment("/api/updates/{updateId}");
   const schemaMatch = segment("/api/packages/{packageId}/schema");
 
@@ -402,8 +411,14 @@ export async function routeRequest(
   // job, below.)
   const bad = (reason: string): RouterResponse => ({ status: 400, body: { reason } });
 
-  // Excludes the four paths that do not take an offset — their contracts have no invalid_offset.
-  const takesOffset = !isSession && !isNode && schemaMatch === null && updateDetailMatch === null;
+  // Excludes the paths that do not take an offset query — their contracts have no invalid_offset for it.
+  // The feed's offset is in its path and is checked below.
+  const takesOffset =
+    !isSession &&
+    !isNode &&
+    schemaMatch === null &&
+    updateDetailMatch === null &&
+    updatesAfterMatch === null;
   if (
     takesOffset &&
     req.query.offset !== undefined &&
@@ -424,6 +439,11 @@ export async function routeRequest(
   // notation with leading zeros is forbidden by the document — this stops `0000000000000168` from being
   // accepted on the strength of its value alone.
   if (updateByOffsetMatch !== null && !isPositiveIntegerString(updateByOffsetMatch)) {
+    return bad("invalid_offset");
+  }
+  // The feed's starting point. 0 is a point too — "everything from the start" — so it is allowed here where
+  // the point lookup above refuses it.
+  if (updatesAfterMatch !== null && !isNonNegativeIntegerString(updatesAfterMatch)) {
     return bad("invalid_offset");
   }
 
@@ -957,6 +977,58 @@ export async function routeRequest(
         filter: paged.page.filter,
       },
     };
+  }
+
+  if (updatesAfterMatch !== null) {
+    // **The live feed's question: what happened after this point.** The list (/api/updates) asks for a
+    // window and widens it until it holds enough to be called recent; a screen that keeps up with the ledger
+    // asks a narrower question — every update in (after, ledgerEnd] — and asks it again a few seconds later
+    // with the end it was handed. When nothing moved, only the ledger end is read: a quiet ledger costs one
+    // small call a tick, not a window.
+    const viewer = await resolveViewer(send);
+    if (!viewer.ok) {
+      return viewer.http;
+    }
+    if (viewer.kind === "no_party_rights") {
+      return noPartyRights();
+    }
+    const after = Number.parseInt(updatesAfterMatch, 10);
+    const endResult: LedgerCallResult<unknown> = await callGetLedgerEnd(send);
+    if (!endResult.ok) {
+      return ledgerFailureToHttp(endResult.reason);
+    }
+    const endValue = endResult.value as { offset?: unknown };
+    if (typeof endValue?.offset !== "number") {
+      return { status: 502, body: { reason: "node_error" } };
+    }
+    const end = endValue.offset;
+    // A point the ledger has not reached is the same mistake as a query offset past the end, and is given
+    // the same name. A screen holding an offset from a ledger that was since reset lands here.
+    if (after > end) {
+      return bad("offset_after_ledger_end");
+    }
+    // The newest UPDATES_AFTER_MAX_SPAN offsets at most — see the constant. beginExclusive in the answer is
+    // where the read really began.
+    const beginExclusive = Math.max(after, end - UPDATES_AFTER_MAX_SPAN);
+    if (beginExclusive >= end) {
+      // Nothing moved. (end, end] is empty and is not sent to the ledger.
+      return { status: 200, body: { rows: [], offset: end, beginExclusive: end } };
+    }
+    const updatesResult = await callGetUpdates(send, viewer.filter, beginExclusive, end);
+    if (!updatesResult.ok) {
+      return ledgerFailureToHttp(updatesResult.reason);
+    }
+    const envelope = toUpdateEntries(updatesResult.value);
+    if (!envelope.ok) {
+      return { status: 502, body: { reason: "node_error" } };
+    }
+    // Every row of the range, newest first — no filter and no page. The screen holds the whole tail, and a
+    // cut here would be a gap it could not see.
+    const result = buildRecentUpdates(envelope.rows, { limit: Math.max(1, envelope.rows.length) });
+    if (!result.ok) {
+      return { status: 502, body: { reason: "node_error" } };
+    }
+    return { status: 200, body: { rows: result.rows, offset: end, beginExclusive } };
   }
 
   if (isTimeline) {

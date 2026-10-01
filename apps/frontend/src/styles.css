@@ -1217,3 +1217,51 @@
     padding-right: var(--clds-space-6);
   }
 }
+
+/* ── Live feed ──────────────────────────────────────────────────────────
+   A row that arrived while the screen was open comes in lit and settles over a few seconds. The light is the
+   accent's soft ground, so it reads as "new here", not as a state of the row. It plays once, on mount — rows
+   are keyed by update id, so a row never mounts twice. */
+@keyframes live-arrive {
+  from {
+    background: var(--clds-color-accent-soft);
+  }
+  to {
+    background: transparent;
+  }
+}
+.live-fresh > td {
+  animation: live-arrive 8s ease-out 1;
+}
+.live-state--on {
+  color: var(--clds-color-positive);
+}
+.live-state--paused {
+  color: var(--clds-color-ink-dim);
+}
+.live-state--problem {
+  color: var(--clds-color-problem);
+}
+.live-controls {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--clds-space-4);
+}
+.live-controls__note {
+  font-size: var(--clds-text-small);
+}
+/* Big type — for a screen read from across a room. Only the sizes change; the layout is the same table. */
+.live-big .clds-table {
+  font-size: calc(var(--clds-text-compact) * 1.6);
+}
+.live-big .clds-table th {
+  font-size: calc(var(--clds-text-note) * 1.4);
+}
+.live-big .clds-table td {
+  padding-top: var(--clds-space-5);
+  padding-bottom: var(--clds-space-5);
+}
+.live-big .clds-badge {
+  font-size: calc(var(--clds-text-caption) * 1.5);
+}

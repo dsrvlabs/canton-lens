@@ -114,6 +114,7 @@ const PARTY_SCOPED: [string, Record<string, string>][] = [
   ["/api/contracts", {}],
   ["/api/contracts/00abcd", {}],
   ["/api/updates", {}],
+  ["/api/updates/after/0", {}],
   [`/api/updates/${UPDATE_ID}`, {}],
   ["/api/updates/by-offset/5", {}],
   ["/api/timeline", {}],
@@ -430,4 +431,133 @@ test("/api/home never reports instance-wide scope and no_party_rights at once", 
   // than reporting a zero.
   assert.equal(body.cards.tokens?.status, "unavailable");
   assert.equal(body.cards.tokens?.reason, "no_own_parties");
+});
+
+// ── The live feed ────────────────────────────────────────────────────────────────
+//
+// /api/updates/after/{offset} reads (offset, ledgerEnd] and nothing wider. What the stub answers is not the
+// point here; **which questions reach the node** is — on a quiet tick none of the range may, and on a busy
+// one exactly that range and no other.
+
+/** One node transaction with one created event, at this offset. */
+const transactionAt = (offset: number) => ({
+  update: {
+    Transaction: {
+      value: {
+        updateId: `1220${offset.toString(16).padStart(64, "0")}`,
+        offset,
+        effectiveAt: "2026-09-14T00:00:00Z",
+        events: [
+          {
+            CreatedEvent: {
+              contractId: `00${offset}`,
+              templateId: "pkg:Mod:Ent",
+              signatories: ["alice::1220ab"],
+              observers: [],
+              witnessParties: ["alice::1220ab"],
+            },
+          },
+        ],
+      },
+    },
+  },
+});
+
+const feedLedger =
+  (
+    asked: LedgerRequest[],
+    updates: { update: { Transaction: { value: { offset: number } } } }[],
+    end: number,
+  ) =>
+  async (request: LedgerRequest) => {
+    asked.push(request);
+    if (request.path === "/v2/authenticated-user") {
+      return { status: 200, body: { user: { id: "viewer", primaryParty: "" } } };
+    }
+    if (request.path === "/v2/users/viewer/rights") {
+      return { status: 200, body: { rights: [OWN_PARTY] } };
+    }
+    if (request.path === "/v2/state/ledger-end") {
+      return { status: 200, body: { offset: end } };
+    }
+    if (request.path.startsWith("/v2/updates?")) {
+      // The walk resumes after the last offset it saw and ends on an empty page, so a page is what lies
+      // after the begin it was asked with.
+      const begin = (request.body as { beginExclusive: number }).beginExclusive;
+      return {
+        status: 200,
+        body: updates.filter((u) => u.update.Transaction.value.offset > begin),
+      };
+    }
+    return { status: 500, body: { cause: `unexpected ${request.path}` } };
+  };
+
+const feed = async (offset: string, updates: ReturnType<typeof transactionAt>[] = [], end = 12) => {
+  const asked: LedgerRequest[] = [];
+  const response = await routeRequest(
+    { method: "GET", path: `/api/updates/after/${offset}`, query: {}, ledgerToken: "token" },
+    { send: feedLedger(asked, updates, end) },
+  );
+  // Only the range — the party filter the body also carries is the other tests' business.
+  const ranges = asked
+    .filter((r) => r.path.startsWith("/v2/updates?"))
+    .map((r) => {
+      const body = r.body as { beginExclusive: number; endInclusive: number };
+      return { beginExclusive: body.beginExclusive, endInclusive: body.endInclusive };
+    });
+  return { response, ranges };
+};
+
+test("the feed at the ledger end asks the node for nothing but the end", async () => {
+  const { response, ranges } = await feed("12");
+  assert.deepEqual(response, { status: 200, body: { rows: [], offset: 12, beginExclusive: 12 } });
+  assert.deepEqual(ranges, [], "the empty range (12, 12] was sent to the node");
+});
+
+test("the feed behind the ledger end asks for exactly (after, end], newest first", async () => {
+  const { response, ranges } = await feed("9", [transactionAt(10), transactionAt(12)]);
+  assert.equal(response.status, 200);
+  assert.deepEqual(ranges[0], { beginExclusive: 9, endInclusive: 12 });
+  for (const range of ranges) assert.equal(range.endInclusive, 12, "a read of some other moment");
+  const body = response.body as {
+    rows: { offset: number }[];
+    offset: number;
+    beginExclusive: number;
+  };
+  assert.deepEqual(
+    body.rows.map((r) => r.offset),
+    [12, 10],
+  );
+  assert.equal(body.offset, 12);
+  assert.equal(body.beginExclusive, 9);
+});
+
+test("the feed past the ledger end is a 400 with the same name as a query offset past it", async () => {
+  const { response, ranges } = await feed("13");
+  assert.deepEqual(response, { status: 400, body: { reason: "offset_after_ledger_end" } });
+  assert.deepEqual(ranges, []);
+});
+
+test("the feed's offset is a canonical non-negative integer — 0 is a point, 007 and -1 are not", async () => {
+  for (const bad of ["-1", "007", "x", "1.5"]) {
+    const { response } = await feed(bad);
+    assert.equal(response.status, 400, `"${bad}" answered ${response.status}`);
+  }
+  const { response } = await feed("0", [transactionAt(1)]);
+  assert.equal(response.status, 200);
+});
+
+test("the feed reads at most two thousand offsets back, and says where it really began", async () => {
+  // A screen away for a long time asks from 5 against a ledger at 5,000. The read starts at 3,000, not 5,
+  // and the answer says so — the gap is the screen's to state, not to draw as "nothing happened".
+  const { response, ranges } = await feed("5", [transactionAt(2_999), transactionAt(4_000)], 5_000);
+  assert.equal(response.status, 200);
+  assert.deepEqual(ranges[0], { beginExclusive: 3_000, endInclusive: 5_000 });
+  const body = response.body as { rows: { offset: number }[]; beginExclusive: number };
+  assert.equal(body.beginExclusive, 3_000);
+  assert.deepEqual(
+    body.rows.map((r) => r.offset),
+    [4_000],
+    "a row from before the cut was served",
+  );
 });

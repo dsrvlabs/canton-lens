@@ -74,6 +74,13 @@ export type UpdatesResponse = Stamped & {
   filter: UpdateFilter;
 };
 
+// The live feed's answer — every update in (beginExclusive, offset], newest first, unfiltered and uncut.
+export type UpdatesAfterResponse = Stamped & {
+  rows: RecentUpdateRow[];
+  offset: number;
+  beginExclusive: number;
+};
+
 export type SchemaFieldLite = { name: string; type: string };
 export type ChoiceLite = {
   name: string;

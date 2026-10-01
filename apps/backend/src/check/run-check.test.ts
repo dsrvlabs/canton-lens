@@ -130,16 +130,16 @@ test("stands up the recorded ledger and passes every level (twelve people)", asy
     "runs as twelve people — the boundary is only visible where the people differ",
   );
   // **Two tables, two counts, both derived rather than observed.**
-  //   the addresses:  21 × 12 = 252, less the 27 that legitimately cannot be put to someone → 225
+  //   the addresses:  23 × 12 = 276, less the 30 that legitimately cannot be put to someone → 246
   //   the probes:     15 kinds × 12 = 180, less the 29 nobody has the material for → 151
   // Both breakdowns are worked out person by person in expectations.test.ts; a number that moves without a
   // person's shape changing is the thing these assertions exist to catch.
   const PROBE_KINDS = PROBES.reduce((n, probe) => n + probe.kinds.length, 0);
   assert.equal(PROBE_KINDS, 15, "the probe matrix changed shape");
-  assert.equal(report.asked, 225 + 151, `asked ${report.asked} times`);
+  assert.equal(report.asked, 246 + 151, `asked ${report.asked} times`);
   assert.equal(
     report.notAsked.length,
-    27 + 29,
+    30 + 29,
     `${report.notAsked.length} were rightly not asked — both counts are derived in expectations.test.ts`,
   );
 });
@@ -223,7 +223,7 @@ test("every operation openapi declares is in the check table, and every 200 sche
   assert.deepEqual(coverage.withoutValidator, [], "no 200 schema resolves through ajv for these");
   assert.equal(
     coverage.openApiOperations.length,
-    17,
+    18,
     "the number of operations changed — if it grew, check that the new one is in the table",
   );
 });
@@ -251,7 +251,7 @@ test("the router, openapi and the check table name the same addresses", () => {
   );
   assert.equal(
     coverage.routerOperations.length,
-    17,
+    18,
     "the number of operations the router answers changed",
   );
   // The templates are compared character for character on purpose — `{updateId}` against `{updateId}`. A

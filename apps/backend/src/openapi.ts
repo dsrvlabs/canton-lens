@@ -420,6 +420,48 @@ export const openApiDocument = {
         },
       },
     },
+    "/api/updates/after/{offset}": {
+      get: {
+        operationId: "listUpdatesAfter",
+        summary:
+          "The live feed — every update after one offset, up to the ledger end, in one unfiltered list",
+        description:
+          "Where /api/updates asks for a window wide enough to hold “recent”, this asks a narrower question " +
+          "a screen can repeat every few seconds: everything in (offset, ledgerEnd]. The caller hands back " +
+          "the `offset` of the previous answer as the next address. When nothing moved only the ledger end " +
+          "is read and rows is empty. The range is cut at the newest 2,000 offsets — a screen that was away " +
+          "for long is not served a day of history here; beginExclusive says where the read really began, " +
+          "so the gap can be said rather than drawn as nothing.",
+        parameters: [
+          {
+            name: "offset",
+            in: "path",
+            required: true,
+            schema: { type: "string", pattern: "^(0|[1-9][0-9]*)$", maxLength: 15 },
+            description:
+              "The point already seen (exclusive). 0 asks from the start of what the participant retains. " +
+              "A value past the ledger end is 400 (offset_after_ledger_end).",
+          },
+        ],
+        responses: {
+          "200": ok(
+            "UpdatesAfterResponse",
+            "The rows of buildRecentUpdates(core) for (beginExclusive, offset], newest first, with offset (the " +
+              "ledger end read) and beginExclusive (max(asked, offset − 2,000)). Empty when nothing moved.",
+          ),
+          "400": failure(
+            "invalid_offset — not a non-negative integer string. offset_after_ledger_end — the point named is " +
+              "beyond the ledger end the participant reports.",
+            ["invalid_offset", "offset_after_ledger_end"],
+          ),
+          "410": failure("pruned — the range reaches into history the participant has pruned.", [
+            "pruned",
+          ]),
+          "401": unauthenticatedResponse,
+          ...partyScopedFailureResponses,
+        },
+      },
+    },
     "/api/updates/{updateId}": {
       get: {
         operationId: "getUpdate",

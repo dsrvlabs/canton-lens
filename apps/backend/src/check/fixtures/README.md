@@ -16,7 +16,7 @@ CI has no Canton node. So `run-check.test.ts` stands these files up in the ledge
 | Canton version | 3.5.15 |
 | People | alice · bob · carol · nobody · idp · padmin · actor · super* · superplus* · dual · mixed · dave |
 | Ledger end | 263 — the point every answer here was read at |
-| Addresses asked | 376 (everything the check actually asks) |
+| Addresses asked | 397 (everything the check actually asks) |
 
 **Recorded with user tokens.** Recorded with an admin token, the files would hold everything rather than the
 boundary Canton enforces, and then they would be material unrelated to the statement this product exists to

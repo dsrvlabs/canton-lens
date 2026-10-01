@@ -436,6 +436,7 @@ export async function runCheck(
       packageId: null,
       partyId: null,
       nextPage: null,
+      ledgerEnd: null,
     };
     await round(ROUND_ONE, NOTHING);
     const harvested = harvest(bodies);
