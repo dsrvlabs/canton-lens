@@ -1242,12 +1242,6 @@
 .live-state--problem {
   color: var(--clds-color-problem);
 }
-.live-controls {
-  display: inline-flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--clds-space-4);
-}
 .live-controls__note {
   font-size: var(--clds-text-small);
 }

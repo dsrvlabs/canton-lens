@@ -9,7 +9,15 @@
 //
 // The fetching half holds the timer and the tail. The drawing half is a function of its props and nothing
 // else, so a test can hand it a recorded answer and look at the screen (screens.test.mjs).
-import { Button, MessageRow, Muted, Scroll, Section, Table } from "@canton-lens/design-system";
+import {
+  Button,
+  MessageRow,
+  Muted,
+  Scroll,
+  Section,
+  Table,
+  Toolbar,
+} from "@canton-lens/design-system";
 import type React from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { messageOf } from "../api/client.ts";
@@ -232,45 +240,39 @@ export function LiveView({
           ) : null}
         </span>
       }
-      foot={
-        <span id="live-controls" className="live-controls">
-          {/* Off — back to the paged list. Only the switch leaves the address; big and every stay for next time. */}
-          <Button
-            id="tx-live"
-            size="xs"
-            variant="outline"
-            onClick={() => setHashParams({ live: null })}
-            title="Back to the paged list"
-          >
-            ● Live on
-          </Button>
-          <Button size="xs" onClick={onPause} disabled={error !== null || feed === null}>
-            {paused ? "Resume" : "Pause"}
-          </Button>
-          <Muted>
-            {" "}
-            every{" "}
-            {LIVE_EVERY_CHOICES_S.map((s, i) => (
-              <span key={s}>
-                {i > 0 ? " · " : ""}
-                {s === every ? (
-                  <b>{s}s</b>
-                ) : (
-                  <a href={hashWith({ every: String(s) }, hash)}>{s}s</a>
-                )}
-              </span>
-            ))}
-            {" · "}
-            <a href={hashWith({ big: big ? null : "1" }, hash)}>
-              {big ? "normal type" : "big type"}
-            </a>
-          </Muted>
-          <Muted className="live-controls__note">
-            Polls only while the switch is on and this screen is open. Hidden tabs read nothing.
-          </Muted>
-        </span>
-      }
     >
+      {/* The controls stand where the paged list keeps its switch — above the table — so Live goes on and off
+          under the same pointer. */}
+      <Toolbar id="live-controls" className="live-controls">
+        {/* Off — back to the paged list. Only the switch leaves the address; big and every stay for next time. */}
+        <Button
+          id="tx-live"
+          size="xs"
+          variant="outline"
+          onClick={() => setHashParams({ live: null })}
+          title="Back to the paged list"
+        >
+          ● Live on
+        </Button>
+        <Button size="xs" onClick={onPause} disabled={error !== null || feed === null}>
+          {paused ? "Resume" : "Pause"}
+        </Button>
+        <Muted>
+          {" "}
+          every{" "}
+          {LIVE_EVERY_CHOICES_S.map((s, i) => (
+            <span key={s}>
+              {i > 0 ? " · " : ""}
+              {s === every ? <b>{s}s</b> : <a href={hashWith({ every: String(s) }, hash)}>{s}s</a>}
+            </span>
+          ))}
+          {" · "}
+          <a href={hashWith({ big: big ? null : "1" }, hash)}>{big ? "normal type" : "big type"}</a>
+        </Muted>
+        <Muted className="live-controls__note">
+          Polls only while the switch is on and this screen is open. Hidden tabs read nothing.
+        </Muted>
+      </Toolbar>
       <Scroll>
         <Table id="live-list">
           <tbody>
