@@ -52,7 +52,7 @@ export type LiveFeed = {
 
 // **The fetching half.** It holds the timer, the tail and the answer; it draws nothing.
 export function Live({ hash }: { hash: string }) {
-  const { api, loading } = useSession();
+  const { api } = useSession();
   const every = everyOf(hash);
   const [feed, setFeed] = useState<LiveFeed | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -122,13 +122,15 @@ export function Live({ hash }: { hash: string }) {
     }
   }, [api]);
 
-  // Seed once the session is up. Once — a re-render is not a reason to read again.
+  // Seed once, as soon as the screen is drawn. The other list screens wait for the session's full read
+  // because they take its offset; this one takes none, and that read can run tens of seconds on a large
+  // participant (the package catalogue) — a wall display should not sit blank for it.
   const seeded = useRef(false);
   useEffect(() => {
-    if (loading || seeded.current) return;
+    if (seeded.current) return;
     seeded.current = true;
     void seed();
-  }, [loading, seed]);
+  }, [seed]);
 
   // The clock. Rebuilt only when the interval changes or the feed stops or starts.
   const running = feed !== null && error === null && !paused;
