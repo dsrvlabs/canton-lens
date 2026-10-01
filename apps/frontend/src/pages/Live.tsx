@@ -249,10 +249,13 @@ export function LiveView({
           id="tx-live"
           size="xs"
           variant="outline"
+          className="live-switch live-switch--on"
+          aria-pressed={true}
           onClick={() => setHashParams({ live: null })}
           title="Back to the paged list"
         >
-          ● Live on
+          <span className="live-switch__dot" aria-hidden="true" />
+          Live on
         </Button>
         <Button size="xs" onClick={onPause} disabled={error !== null || feed === null}>
           {paused ? "Resume" : "Pause"}

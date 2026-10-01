@@ -203,6 +203,21 @@ export function TransactionsView({
         {/* Two filters: template and party. The server judges (witnessParties · any one event matching).
             The state lives in the address (?template=&party=&before=). */}
         <ToolbarForm id="tx-filters" onSubmit={submit}>
+          {/* The live switch — first in the toolbar, where the live screen keeps it too (pages/Live.tsx), so
+              it does not move when it is pressed. A page is left behind with the filters: the live list is
+              the unfiltered tail. */}
+          <Button
+            id="tx-live"
+            size="xs"
+            variant="outline"
+            className="live-switch"
+            aria-pressed={false}
+            title="Re-read every few seconds and show new updates as they arrive"
+            onClick={() => setHashParams({ live: "1", before: null, template: null, party: null })}
+          >
+            <span className="live-switch__dot" aria-hidden="true" />
+            Live off
+          </Button>
           <label htmlFor="tx-template">
             Template{" "}
             <SuggestInput
@@ -237,16 +252,6 @@ export function TransactionsView({
             Clear
           </Button>
           <span id="tx-filter-state">{filtered ? <ToolbarFlag>filtered</ToolbarFlag> : null}</span>
-          {/* The live switch. A page is left behind with the filters: the live list is the unfiltered tail. */}
-          <Button
-            id="tx-live"
-            size="xs"
-            variant="outline"
-            title="Re-read every few seconds and show new updates as they arrive"
-            onClick={() => setHashParams({ live: "1", before: null, template: null, party: null })}
-          >
-            ● Live
-          </Button>
         </ToolbarForm>
         <Scroll>
           <Table id="tx-list">

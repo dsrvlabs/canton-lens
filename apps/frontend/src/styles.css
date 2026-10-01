@@ -1242,6 +1242,31 @@
 .live-state--problem {
   color: var(--clds-color-problem);
 }
+/* The live switch — the first thing in both toolbars (paged and live), one width for "off" and "on", and
+   the live toolbar as tall as the paged one's filter row, so pressing it moves neither the switch nor the
+   table below. The dot says the state: faint when off, the live colour when on. */
+.live-switch {
+  min-width: 84px;
+  justify-content: center;
+}
+/* The dot is drawn, not typed: a "●" glyph takes its size and height from the font, so it came out larger
+   than the text and off its centre line. An 8px circle sits on the button's centre (it is a flex box). */
+.live-switch__dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin-right: var(--clds-space-3);
+  border-radius: 50%;
+  background: var(--clds-color-ink-faint);
+}
+.live-switch--on .live-switch__dot {
+  background: var(--clds-color-positive);
+}
+/* 52px — the paged toolbar's height with its text fields (padding included). */
+.live-controls {
+  box-sizing: border-box;
+  min-height: 52px;
+}
 .live-controls__note {
   font-size: var(--clds-text-small);
 }
