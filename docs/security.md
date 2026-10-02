@@ -26,6 +26,10 @@ Policy, and avoid logging tokens. The Docker image sends one (`docker/security-h
 policy in `docker/nginx.conf.template`); a deployment serving the bundle from its own host should
 send the same headers.
 
+The Backend refuses to relay a caller Bearer token to a remote participant over plaintext HTTP.
+HTTPS is required for remote ledger addresses; loopback HTTP remains available for local
+development.
+
 ## Shared Identity
 
 Shared Identity uses one Backend-held credential for every request. It does not authenticate

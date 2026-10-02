@@ -9,7 +9,11 @@
 // caller-bearer never manages user credentials. shared-identity explicitly owns one application
 // credential and an in-memory Client Credentials token provider. Neither profile logs in end users here.
 import { buildApp } from "./build-app.mjs";
-import { assertServiceLedgerBase, readLedgerAuthConfig } from "../auth/config.ts";
+import {
+  assertCallerLedgerBase,
+  assertServiceLedgerBase,
+  readLedgerAuthConfig,
+} from "../auth/config.ts";
 
 let ledgerAuth;
 try {
@@ -58,17 +62,20 @@ if (missing.length > 0 || Number.isNaN(PORT)) {
   process.exit(1);
 }
 
-// Never allow a service credential to be sent to a non-TLS remote ledger or embedded URL credentials.
-// The rule lives in ../auth/config.ts so it can be tested without opening a socket; this file owns
-// only the message and the exit. Loopback HTTP is for local Canton development, as in the committed
-// example; a container cannot use loopback to reach its host, so it names the host instead.
-if (ledgerAuth.mode === "shared-identity") {
-  try {
+// Never send either a caller or service Bearer credential to a non-TLS remote ledger or an address
+// with embedded credentials. The rules live in ../auth/config.ts so they can be tested without
+// opening a socket; this file owns only the startup message and exit. Caller-bearer permits HTTP on
+// loopback for local development. Shared identity also supports explicitly named local-container
+// hosts, paired with a plaintext issuer, through its existing development-only allowance.
+try {
+  if (ledgerAuth.mode === "shared-identity") {
     assertServiceLedgerBase(LEDGER, ledgerAuth);
-  } catch {
-    console.error("[explorer-api] startup refused — shared-identity LEDGER_BASE requires HTTPS (loopback HTTP, or a host named in SHARED_IDENTITY_INSECURE_HTTP_HOSTS, for local development only).");
-    process.exit(1);
+  } else {
+    assertCallerLedgerBase(LEDGER);
   }
+} catch {
+  console.error("[explorer-api] startup refused — LEDGER_BASE requires HTTPS (loopback HTTP is allowed for caller-bearer local development; shared-identity also supports explicitly named development hosts).");
+  process.exit(1);
 }
 
 // ── Sending ──────────────────────────────────────────────────────────────────

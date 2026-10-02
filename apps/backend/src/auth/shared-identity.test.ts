@@ -5,7 +5,7 @@ import { type TestContext, test } from "node:test";
 import { interpretLedgerResponse } from "@canton-lens/core";
 import type { AuthorizedLedgerRequest } from "../ledger-send-with-token.ts";
 import { buildApp } from "../live/build-app.mjs";
-import { assertServiceLedgerBase, readLedgerAuthConfig } from "./config.ts";
+import { assertCallerLedgerBase, assertServiceLedgerBase, readLedgerAuthConfig } from "./config.ts";
 import { serviceRequest } from "./service-request.ts";
 import { EXPIRY_MARGIN_MS, ServiceTokenProvider } from "./service-token.ts";
 
@@ -262,11 +262,35 @@ test("the shared credential's ledger address: HTTPS, a loopback host, or a named
   }
 });
 
+test("a caller credential's ledger address requires HTTPS except on loopback", () => {
+  assertCallerLedgerBase("https://canton.example");
+  assertCallerLedgerBase("https://canton.example/api/v2");
+  for (const host of ["localhost", "127.0.0.1", "[::1]"]) {
+    assertCallerLedgerBase(`http://${host}:7575`);
+  }
+
+  for (const base of [
+    "http://canton.example",
+    "http://host.docker.internal:7575",
+    "https://canton.example?x=1",
+    "https://canton.example#x",
+    `https://${secret}@canton.example`,
+    "file:///tmp/canton",
+    "not-a-url",
+  ]) {
+    assert.throws(
+      () => assertCallerLedgerBase(base),
+      (error: Error) => !error.message.includes(base) && !error.message.includes(secret),
+    );
+  }
+});
+
 test("startup refuses invalid modes/configuration without printing configured secrets or opening a socket", () => {
   for (const extra of [
     { LEDGER_AUTH_MODE: "" },
     { LEDGER_AUTH_MODE: "auto" },
     { LEDGER_AUTH_MODE: "caller-bearer", SHARED_IDENTITY_CLIENT_SECRET: secret },
+    { LEDGER_AUTH_MODE: "caller-bearer", LEDGER_BASE: "http://remote.example" },
     { ...env, SHARED_IDENTITY_CLIENT_SECRET: "" },
     { ...env, SHARED_IDENTITY_ISSUER: `https://${secret}@bad.example/realm` },
     { ...env, LEDGER_BASE: "http://remote.example" },

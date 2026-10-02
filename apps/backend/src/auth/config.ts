@@ -123,6 +123,29 @@ export function safeServiceEndpoint(
   }
 }
 
+// A caller-bearer token is just as sensitive as the shared service token. Refuse to relay it to a
+// remote participant over plaintext, while keeping loopback HTTP available for local development.
+// Embedded credentials, query parameters and fragments are not valid parts of the configured base.
+export function assertCallerLedgerBase(ledgerBase: string): void {
+  try {
+    const url = new URL(ledgerBase);
+    const loopbackHttp = url.protocol === "http:" && LOOPBACK_HOSTS.includes(url.hostname);
+    if (
+      (url.protocol !== "https:" && !loopbackHttp) ||
+      url.username ||
+      url.password ||
+      url.search ||
+      url.hash
+    ) {
+      throw new Error();
+    }
+  } catch {
+    throw new Error(
+      "caller-bearer LEDGER_BASE requires HTTPS without credentials, query or fragment; HTTP is allowed only on loopback",
+    );
+  }
+}
+
 // **Where the service credential is allowed to travel.** A shared-identity token opens the whole
 // configured Canton scope for every user at once, so it does not go out over plaintext. Kept here
 // rather than inline in serve.mjs so the rule is testable without opening a socket; that file owns
