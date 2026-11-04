@@ -34,6 +34,8 @@ import { pickedTemplate, TEMPLATE_PINNED } from "./template-filter.ts";
 
 type Cursor = NonNullable<ContractsResponse["nextCursor"]>;
 export type Page = {
+  // Pagination shares the first read's cancellation guard.
+  isCurrent: () => boolean;
   rows: ContractListRow[];
   cursor: Cursor | null;
   total: number;
@@ -79,6 +81,7 @@ export function Contracts({ hash }: { hash: string }) {
       (res) => {
         if (cancelled) return;
         setPage({
+          isCurrent: () => !cancelled,
           rows: res.rows ?? [],
           cursor: res.nextCursor ?? null,
           total: res.total ?? (res.rows ?? []).length,
@@ -102,7 +105,7 @@ export function Contracts({ hash }: { hash: string }) {
   // Older — hands the server's nextCursor triple straight back. The offset stays pinned to the first
   // page's (the rule above).
   const older = async () => {
-    if (!page?.cursor) return;
+    if (!page?.cursor || !page.isCurrent()) return;
     try {
       const res = await api<ContractsResponse>(
         `/api/contracts?${params(page.offset, {
@@ -111,9 +114,10 @@ export function Contracts({ hash }: { hash: string }) {
           cursorContractId: page.cursor.contractId,
         })}`,
       );
+      if (!page.isCurrent()) return;
       setPage({ ...page, rows: page.rows.concat(res.rows ?? []), cursor: res.nextCursor ?? null });
     } catch (e) {
-      fail(messageOf(e));
+      if (page.isCurrent()) fail(messageOf(e));
     }
   };
 

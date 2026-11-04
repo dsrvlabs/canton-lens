@@ -23,14 +23,14 @@ jobs:
   # 22.x, so this job does not cover the whole 22 line.
   unit:
     name: unit (core, node ${{ matrix.node }}, no install)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
         node: ["22", "24"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ matrix.node }}
       - run: node --test "packages/core/src/**/*.test.ts"
@@ -41,15 +41,15 @@ jobs:
   # walks that path too, not only the newest.
   checks:
     name: tests · typecheck · lint
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
         node: ["22", "24"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ matrix.node }}
           cache: pnpm
@@ -86,7 +86,7 @@ jobs:
   # pair whose refusal is a plain 401, which makes the assertion below meaningful.
   docker:
     name: docker images · route map
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       EXPLORER_PORT: "18080"
       VITE_AUTH_MODE: browser-oidc
@@ -99,7 +99,7 @@ jobs:
       LEDGER_BASE: https://canton.invalid
       PUBLIC_ENTRY_URL: http://localhost:18080/
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # Compose interpolates from the process environment, so no docker/.env is written here. The
       # required values above stand in for it; a missing one stops compose before any build starts.
       - run: docker compose -f docker/compose.yaml build
